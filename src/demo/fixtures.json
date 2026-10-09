@@ -1,0 +1,84 @@
+{
+  "en": [
+    {
+      "id": "demo-groceries",
+      "name": "Groceries",
+      "open": [
+        {"title": "Tomatoes", "note": "1 kg"},
+        {"title": "Milk", "note": "2 boxes"},
+        {"title": "Bananas", "note": "6"},
+        {"title": "Olive oil", "note": ""},
+        {"title": "Cheese", "note": "200 g"},
+        {"title": "Apples", "note": "1 kg"},
+        {"title": "Toilet paper", "note": "the big pack"}
+      ],
+      "cart": [
+        {"title": "Bread", "note": "", "minutesAgo": 4},
+        {"title": "Eggs", "note": "12", "minutesAgo": 7},
+        {"title": "Coffee", "note": "", "minutesAgo": 9},
+        {"title": "Butter", "note": "", "minutesAgo": 11},
+        {"title": "Yogurt", "note": "4", "minutesAgo": 15}
+      ]
+    },
+    {
+      "id": "demo-pharmacy",
+      "name": "Pharmacy",
+      "open": [
+        {"title": "Sunscreen", "note": ""},
+        {"title": "Toothpaste", "note": "2"},
+        {"title": "Plasters", "note": ""}
+      ],
+      "cart": []
+    },
+    {
+      "id": "demo-hardware",
+      "name": "Hardware store",
+      "open": [],
+      "cart": [
+        {"title": "Light bulbs", "note": "2", "minutesAgo": 300},
+        {"title": "Wood screws", "note": "", "minutesAgo": 302}
+      ]
+    }
+  ],
+  "pt": [
+    {
+      "id": "demo-groceries",
+      "name": "Mercado",
+      "open": [
+        {"title": "Tomate", "note": "1 kg"},
+        {"title": "Leite", "note": "2 caixas"},
+        {"title": "Bananas", "note": "6"},
+        {"title": "Azeite", "note": ""},
+        {"title": "Queijo", "note": "200 g"},
+        {"title": "Maçãs", "note": "1 kg"},
+        {"title": "Papel higiênico", "note": "o pacote grande"}
+      ],
+      "cart": [
+        {"title": "Pão", "note": "", "minutesAgo": 4},
+        {"title": "Ovos", "note": "12", "minutesAgo": 7},
+        {"title": "Café", "note": "", "minutesAgo": 9},
+        {"title": "Manteiga", "note": "", "minutesAgo": 11},
+        {"title": "Iogurte", "note": "4", "minutesAgo": 15}
+      ]
+    },
+    {
+      "id": "demo-pharmacy",
+      "name": "Farmácia",
+      "open": [
+        {"title": "Protetor solar", "note": ""},
+        {"title": "Pasta de dente", "note": "2"},
+        {"title": "Curativos", "note": ""}
+      ],
+      "cart": []
+    },
+    {
+      "id": "demo-hardware",
+      "name": "Loja de ferragens",
+      "open": [],
+      "cart": [
+        {"title": "Lâmpadas", "note": "2", "minutesAgo": 300},
+        {"title": "Parafusos", "note": "", "minutesAgo": 302}
+      ]
+    }
+  ]
+}
