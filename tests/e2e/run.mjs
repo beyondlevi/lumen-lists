@@ -87,11 +87,15 @@ async function actionsShown(page) {
   );
 }
 
-/** The band hints on screen are exactly these. */
+/** The band hints on screen are exactly these, on one line. */
 async function hints(page, expected) {
   await page.waitForTimeout(200);
-  const shown = await page.locator('.hint-dock').first().evaluate(dock => [...dock.children].map(child => child.textContent.trim()));
+  const {shown, lines} = await page.locator('.hint-dock').first().evaluate(dock => ({
+    shown: [...dock.children].map(child => child.textContent.trim()),
+    lines: new Set([...dock.children].map(child => Math.round(child.getBoundingClientRect().top))).size,
+  }));
   assert.deepEqual(shown, expected);
+  assert.equal(lines, 1, `the hints fit on one line: ${shown.join(' | ')}`);
 }
 
 /**
@@ -627,9 +631,7 @@ const scenarios = {
     await press(page, 'ArrowLeft');
     await press(page, 'ArrowRight');
     assert.match(await focusLabel(page), /^Editar$/);
-    await hints(page, ['Indicador: escolher', 'À direita: próxima', 'À esquerda: anterior']);
-    const lines = await page.locator('.hint-dock').first().evaluate(dock => new Set([...dock.children].map(child => Math.round(child.getBoundingClientRect().top))).size);
-    assert.equal(lines, 1, 'the hints fit on one line');
+    await hints(page, ['Toque: escolher', 'Direita: próxima', 'Esquerda: anterior']);
     await shot('swipe');
     await press(page, 'ArrowLeft', 2);
     await focusUntil(page, 'ArrowUp', /^Adicionar tarefas/);
