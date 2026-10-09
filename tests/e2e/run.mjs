@@ -2,21 +2,21 @@
 //
 //   npm run package && npm run test:e2e             (Firefox + Chromium)
 //   E2E_BROWSERS=firefox npm run test:e2e
-//   E2E_ONLY='add items' npm run test:e2e            (scenarios whose title matches)
+//   E2E_ONLY='add tasks' npm run test:e2e            (scenarios whose title matches)
 //
 // The built app is served like the Lumen host serves a package (static files,
 // SPA fallback) on 127.0.0.1:4173 and the mock on 127.0.0.1:8091, so every call
 // is a real cross-origin request with a CORS preflight, as with TickTick. The
-// offline package test unzips dist/lumen-lists.mrbd.zip and serves that, and
-// also saves a 600x600 capture of every screen in demo mode under
-// .e2e-output/screens/.
+// browser runs in America/Sao_Paulo, as the mock dates its tasks. The offline
+// package test unzips dist/lumen-lists.mrbd.zip and serves that, and also saves
+// a 600x600 capture of every screen in demo mode under .e2e-output/screens/.
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {unzipSync} from 'fflate';
 import {chromium, firefox} from 'playwright';
-import {MOCK_PORT, MOCK_TOKEN, startMockServer} from '../../mock/server.mjs';
+import {dueDateFor, INBOX_ID, MOCK_PORT, MOCK_TIME_ZONE, MOCK_TOKEN, startMockServer} from '../../mock/server.mjs';
 import {startStaticServer} from './static-server.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
@@ -28,6 +28,8 @@ const PACKAGE_APP = 'http://127.0.0.1:5500';
 const browsers = (process.env.E2E_BROWSERS ?? 'firefox,chromium').split(',');
 const only = process.env.E2E_ONLY ? new RegExp(process.env.E2E_ONLY, 'i') : null;
 const results = [];
+/** The page of the scenario running, captured when it fails. */
+let lastPage = null;
 
 fs.mkdirSync(screensDir, {recursive: true});
 
@@ -51,7 +53,7 @@ async function press(page, key, times = 1) {
 }
 
 /** Moves focus with `key` until its label matches, or fails. */
-async function focusUntil(page, key, pattern, limit = 12) {
+async function focusUntil(page, key, pattern, limit = 14) {
   for (let i = 0; i <= limit; i += 1) {
     const label = await focusLabel(page);
     if (pattern.test(label)) return label;
@@ -64,13 +66,13 @@ async function waitText(page, text, timeout = 8000) {
   await page.getByText(text, {exact: false}).first().waitFor({state: 'visible', timeout});
 }
 
+async function waitGone(page, text, timeout = 8000) {
+  await page.getByText(text, {exact: true}).first().waitFor({state: 'hidden', timeout});
+}
+
 async function waitField(page, timeout = 8000) {
   await page.locator('textarea').first().waitFor({state: 'visible', timeout});
   await page.waitForTimeout(500);
-}
-
-async function waitGone(page, text, timeout = 8000) {
-  await page.getByText(text, {exact: true}).first().waitFor({state: 'hidden', timeout});
 }
 
 /**
@@ -97,7 +99,7 @@ async function assertComposerField(page) {
     const field = document.activeElement;
     const event = new KeyboardEvent('keydown', {key: 'Enter', code: 'Enter', bubbles: true, cancelable: true});
     field.dispatchEvent(event);
-    return {tag: field.tagName, type: field.getAttribute('type'), disabled: field.disabled, readOnly: field.readOnly, prevented: event.defaultPrevented};
+    return {tag: field.tagName, disabled: field.disabled, readOnly: field.readOnly, prevented: event.defaultPrevented, value: field.value};
   });
   assert.equal(probe.tag, 'TEXTAREA');
   assert.equal(probe.disabled, false);
@@ -107,7 +109,7 @@ async function assertComposerField(page) {
 }
 
 async function openApp(browser, name, config, {appUrl = APP, route = '/', locale = 'en-US'} = {}) {
-  const context = await browser.newContext({viewport: {width: 600, height: 600}, locale});
+  const context = await browser.newContext({viewport: {width: 600, height: 600}, locale, timezoneId: MOCK_TIME_ZONE});
   await context.addInitScript(values => {
     if (!sessionStorage.getItem('e2e-config-set')) {
       localStorage.setItem('lumen-lists.dev-config', JSON.stringify(values));
@@ -115,6 +117,7 @@ async function openApp(browser, name, config, {appUrl = APP, route = '/', locale
     }
   }, config);
   const page = await context.newPage();
+  lastPage = page;
   const errors = [];
   page.on('pageerror', error => errors.push(String(error)));
   await page.goto(`${appUrl}${route}`);
@@ -123,11 +126,22 @@ async function openApp(browser, name, config, {appUrl = APP, route = '/', locale
 
 const session = {'ticktick.token': MOCK_TOKEN, 'ticktick.api': MOCK};
 
-async function openGroceries(page) {
-  await waitText(page, 'Groceries');
-  await focusUntil(page, 'ArrowDown', /^Groceries/);
+/** From Pending to the Lists tab. */
+async function toLists(page) {
+  await waitText(page, 'Send the proposal');
+  await page.waitForTimeout(400);
+  await focusUntil(page, 'ArrowUp', /Page 1 of 3/, 12);
+  await press(page, 'ArrowRight');
+  await waitText(page, '7 pending · 1 overdue');
+  await page.waitForTimeout(400);
+}
+
+async function openWork(page) {
+  await toLists(page);
+  await focusUntil(page, 'ArrowDown', /^Work/);
   await press(page, 'Enter');
-  await waitText(page, 'Add items');
+  await waitText(page, 'Add tasks');
+  await waitText(page, 'Review the onboarding screens');
   await page.waitForTimeout(500);
 }
 
@@ -137,13 +151,13 @@ const scenarios = {
     const {page, context, errors, shot} = await openApp(browser, name, {});
     await waitText(page, 'Connect TickTick');
     await waitText(page, 'Settings › Account › API Token');
+    await waitText(page, 'Unofficial: not made by TickTick');
     await page.waitForTimeout(600);
     await shot('setup');
     await page.evaluate(values => localStorage.setItem('lumen-lists.dev-config', JSON.stringify(values)), session);
     await focusUntil(page, 'ArrowDown', /Try again/, 4);
     await press(page, 'Enter');
-    await waitText(page, 'Groceries');
-    assert.match(await focusLabel(page), /Groceries/);
+    await waitText(page, 'Send the proposal');
     assert.deepEqual(errors, []);
     await context.close();
   },
@@ -157,206 +171,336 @@ const scenarios = {
     await context.close();
   },
 
-  async 'lists, an item in the cart and back, focus restored on Back'(browser, name) {
+  async 'Pending: every list and the Inbox, grouped by day; Enter completes'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await waitText(page, 'Groceries');
-    await waitText(page, '7 to buy');
-    await waitText(page, 'All bought');
+    await waitText(page, 'Send the proposal');
+    for (const text of ['Overdue', 'Today', 'Tomorrow', 'Later', 'No date', 'Reply to the landlord', 'Pay the electricity bill', 'Buy coffee filters']) {
+      await waitText(page, text);
+    }
     assert.equal(await page.getByText('Recipes').count(), 0, 'note lists are not shown');
-    assert.equal(await page.getByText('Old list').count(), 0, 'closed lists are not shown');
-    await shot('home');
-    await openGroceries(page);
-    await waitText(page, '7 of 12 left');
-    await focusUntil(page, 'ArrowDown', /^Milk/);
-    await press(page, 'Enter');
-    await waitText(page, '6 of 12 left');
-    assert.match(await focusLabel(page), /^Bananas/, 'focus moves to the next item');
-    assert.ok((await writeLines()).includes('POST /project/demo-groceries/task/demo-groceries-open-1/complete'));
-    await shot('checked');
-    await focusUntil(page, 'ArrowDown', /^In the cart/);
-    await press(page, 'Enter');
-    await waitText(page, 'Bread');
+    // Overdue first, then today: the all-day tasks, then the timed one.
+    const titles = await page.locator('[data-task-row]').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label')?.split(',')[0]));
+    assert.deepEqual(titles.slice(0, 4), ['Send the proposal', 'Pay the electricity bill', 'Reply to the landlord', 'Call João about the contract']);
     await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^Milk/, 'the newest in the cart comes first');
-    await shot('cart');
+    await shot('pending');
+    await focusUntil(page, 'ArrowDown', /^Reply to the landlord/);
     await press(page, 'Enter');
+    await waitGone(page, 'Reply to the landlord');
+    assert.match(await focusLabel(page), /^Call João about the contract/, 'the next task takes the place');
+    assert.ok((await writeLines()).includes(`POST /project/${INBOX_ID}/task/demo-inbox-0/complete`), 'an Inbox task completes in the Inbox');
+    // TickTick refuses: the task comes back, with a toast.
+    await mock(`/__mock/fail?path=${encodeURIComponent('/complete$')}&status=500&times=1`);
+    await press(page, 'Enter');
+    await waitText(page, "Couldn't complete Call João about the contract");
+    await waitText(page, 'Call João about the contract');
+    assert.deepEqual(errors, []);
+    await context.close();
+  },
+
+  async 'swipe left shows View, Edit, Delete; View opens the task; Back returns'(browser, name) {
+    await mock('/__mock/reset');
+    const {page, context, errors, shot} = await openApp(browser, name, session);
+    await openWork(page);
+    await focusUntil(page, 'ArrowDown', /^Call João about the contract/);
+    await waitText(page, 'Swipe left: options');
+    await press(page, 'ArrowLeft');
+    assert.match(await focusLabel(page), /^View$/, 'a swipe to the left reveals the actions');
+    await waitText(page, 'Swipe right: back');
+    await shot('revealed');
+    await press(page, 'ArrowLeft');
+    assert.match(await focusLabel(page), /^Edit$/);
+    await press(page, 'ArrowLeft');
+    assert.match(await focusLabel(page), /^Delete$/);
+    await press(page, 'ArrowRight', 2);
+    assert.match(await focusLabel(page), /^View$/);
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Call João about the contract/, 'a swipe to the right hides them');
+    await waitText(page, 'Swipe left: options');
+    await press(page, 'ArrowLeft');
+    await press(page, 'Enter');
+    await waitText(page, 'Subtasks · 1 of 3 done');
+    await waitText(page, 'High priority');
+    await waitText(page, 'client, contract');
+    await waitText(page, 'Confirm the start date and who signs on their side.');
+    await waitText(page, 'Today, ');
     await page.waitForTimeout(600);
-    const reopen = (await writes()).find(write => write.path === '/task/demo-groceries-open-1');
+    await shot('task');
+    await press(page, 'Escape');
+    await waitText(page, 'Add tasks');
+    await page.waitForTimeout(600);
+    assert.match(await focusLabel(page), /^Call João about the contract/, 'Back lands on the task again');
+    // The Enter on the task screen's Complete completes and goes back.
+    await press(page, 'ArrowLeft');
+    await press(page, 'Enter');
+    await waitText(page, 'Subtasks · 1 of 3 done');
+    await focusUntil(page, 'ArrowDown', /^(Complete|Edit|Delete)/, 10);
+    await focusUntil(page, 'ArrowLeft', /^Complete/, 3);
+    await press(page, 'Enter');
+    await waitText(page, '6 pending');
+    assert.ok((await writeLines()).includes('POST /project/demo-work/task/demo-work-1/complete'));
+    assert.deepEqual(errors, []);
+    await context.close();
+  },
+
+  async 'Lists: Inbox first, counts; Completed and reopen with status 0'(browser, name) {
+    await mock('/__mock/reset');
+    const {page, context, errors, shot} = await openApp(browser, name, session);
+    await toLists(page);
+    const rows = await page.locator('[role="list"] [aria-label], [aria-label]').evaluateAll(nodes =>
+      nodes.map(node => node.getAttribute('aria-label')).filter(label => /pending|All done/.test(label ?? '')),
+    );
+    assert.match(rows[0] ?? '', /^Inbox, 3 pending/);
+    await waitText(page, 'All done');
+    await shot('lists');
+    await focusUntil(page, 'ArrowDown', /^Work/);
+    await press(page, 'Enter');
+    await waitText(page, 'Add tasks');
+    await focusUntil(page, 'ArrowDown', /^Completed/);
+    await press(page, 'Enter');
+    await waitText(page, 'Draft the agenda');
+    await waitText(page, 'Done yesterday');
+    await page.waitForTimeout(500);
+    assert.match(await focusLabel(page), /^Draft the agenda/);
+    await shot('completed');
+    await press(page, 'Enter');
+    await waitText(page, 'Draft the agenda is pending again');
+    const reopen = (await writes()).find(write => write.path === '/task/demo-work-done-0');
     assert.equal(reopen?.body?.status, 0);
-    assert.match(await focusLabel(page), /^Bread/);
+    assert.match(await focusLabel(page), /^Book the meeting room/);
     await press(page, 'Escape');
-    await waitText(page, '7 of 12 left');
-    await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^In the cart/, `Back restores the focus on In the cart (${await focusLabel(page)})`);
+    await waitText(page, '8 pending');
+    await page.waitForTimeout(600);
+    assert.match(await focusLabel(page), /^Completed/, 'Back lands on Completed');
     await press(page, 'Escape');
-    await waitText(page, 'Pharmacy');
-    await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^Groceries/, 'Back restores the focus on the list');
+    await waitText(page, 'All done');
     assert.equal(new URL(page.url()).pathname, '/');
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'put back: falls back to a new task when TickTick keeps it completed'(browser, name) {
+  async 'reopen falls back to a copy when TickTick keeps the task completed'(browser, name) {
     await mock('/__mock/reset');
     await mock('/__mock/reopen?mode=ignore');
     const {page, context, errors} = await openApp(browser, name, session);
-    await openGroceries(page);
-    await focusUntil(page, 'ArrowDown', /^In the cart/);
+    await openWork(page);
+    await focusUntil(page, 'ArrowDown', /^Completed/);
     await press(page, 'Enter');
-    await waitText(page, 'Bread');
+    await waitText(page, 'Draft the agenda');
     await page.waitForTimeout(400);
-    assert.match(await focusLabel(page), /^Bread/);
     await press(page, 'Enter');
-    await page.waitForTimeout(800);
-    const sent = await writes();
-    assert.deepEqual(
-      sent.map(write => `${write.method} ${write.path}`),
-      ['POST /task/demo-groceries-cart-0', 'POST /task', 'DELETE /project/demo-groceries/task/demo-groceries-cart-0'],
-    );
-    assert.equal(sent[0].body.status, 0);
-    assert.deepEqual({title: sent[1].body.title, projectId: sent[1].body.projectId}, {title: 'Bread', projectId: 'demo-groceries'});
-    await press(page, 'Escape');
-    await waitText(page, '8 of 12 left');
-    await waitText(page, 'Bread');
+    await page.waitForTimeout(900);
+    assert.deepEqual(await writeLines(), ['POST /task/demo-work-done-0', 'POST /task', 'DELETE /project/demo-work/task/demo-work-done-0']);
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'add items through the text field, review and Back'(browser, name) {
+  async 'add tasks through the text field: due dates, review, another list'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await openGroceries(page);
-    assert.match(await focusLabel(page), /^Add items/);
+    await openWork(page);
+    assert.match(await focusLabel(page), /^Add tasks/);
     await press(page, 'Enter');
     await waitField(page);
     await assertComposerField(page);
-    await compose(page, 'Milk, two kilos of rice and coffee filters');
+    await compose(page, 'Call Ana tomorrow at 3 pm and pay the rent in 4 days\nbook flights');
     await shot('written');
     await focusUntil(page, 'ArrowDown', /^Continue/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Already in the list');
-    await waitText(page, 'Add 2 items');
+    await waitText(page, 'Add 3 tasks');
+    await waitText(page, 'Tomorrow 15:00');
     await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^Rice/);
+    assert.match(await focusLabel(page), /^Call Ana/);
     await shot('review');
+    await focusUntil(page, 'ArrowDown', /^Book flights/);
     await press(page, 'Enter');
-    await waitText(page, 'Add 1 item');
+    await waitText(page, 'Add 2 tasks');
+    await focusUntil(page, 'ArrowDown', /^List/);
     await press(page, 'Enter');
-    await waitText(page, 'Add 2 items');
+    await waitText(page, 'Personal');
+    await focusUntil(page, 'ArrowDown', /^Personal/);
+    await press(page, 'Enter');
+    await waitText(page, 'Add 2 tasks');
+    await page.waitForTimeout(500);
+    assert.match(await focusLabel(page), /^List, Personal/);
     await focusUntil(page, 'ArrowDown', /^(Add 2|Edit|Discard)/, 4);
     await focusUntil(page, 'ArrowLeft', /^Add 2/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Coffee filters');
-    await waitText(page, '9 of 14 left');
+    await waitText(page, '2 tasks added');
     const batch = (await writes()).find(write => write.path === '/task/batch');
     assert.deepEqual(
-      batch.body.add.map(task => [task.title, task.content ?? '', task.projectId]),
+      batch.body.add.map(task => [task.title, task.projectId, task.dueDate, task.isAllDay]),
       [
-        ['Rice', '2 kg', 'demo-groceries'],
-        ['Coffee filters', '', 'demo-groceries'],
+        ['Call Ana', 'demo-personal', dueDateFor(1, '15:00'), false],
+        ['Pay the rent', 'demo-personal', dueDateFor(4), true],
       ],
     );
-    assert.ok(batch.body.add[0].sortOrder < batch.body.add[1].sortOrder, 'added in the spoken order, at the end');
-    await page.waitForTimeout(500);
-    await shot('added');
-    // Review took the place of Add items: Back goes to the start screen.
+    assert.equal(batch.body.add[0].timeZone, MOCK_TIME_ZONE);
+    // Review took the place of Add tasks: Back goes to the list, then Lists.
+    await waitText(page, 'Review the onboarding screens');
     await press(page, 'Escape');
-    await waitText(page, 'Pharmacy');
-    assert.equal(new URL(page.url()).pathname, '/');
+    await waitText(page, '7 pending · 1 overdue');
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'review: Edit goes back to the text, Discard drops it'(browser, name) {
+  async 'add from Pending goes to the Inbox; Edit and Discard in review'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors} = await openApp(browser, name, session);
-    await openGroceries(page);
+    await waitText(page, 'Send the proposal');
+    await focusUntil(page, 'ArrowUp', /^Add tasks/);
     await press(page, 'Enter');
     await waitField(page);
-    await compose(page, 'pão e manteiga');
+    await waitText(page, 'Inbox');
+    await compose(page, 'renovar o passaporte amanhã às 9h');
     await focusUntil(page, 'ArrowDown', /^Continue/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Manteiga');
-    await focusUntil(page, 'ArrowDown', /^(Add 2|Edit|Discard)/, 4);
+    await waitText(page, 'Renovar o passaporte');
+    await focusUntil(page, 'ArrowDown', /^(Add 1|Edit|Discard)/, 4);
     await focusUntil(page, 'ArrowLeft', /^Edit/, 3);
+    await focusUntil(page, 'ArrowRight', /^Edit/, 1);
     await press(page, 'Enter');
     await waitField(page);
-    assert.equal(await page.evaluate(() => document.activeElement?.value), 'pão e manteiga');
+    assert.equal(await page.evaluate(() => document.activeElement?.value), 'renovar o passaporte amanhã às 9h');
     await focusUntil(page, 'ArrowDown', /^Continue/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Manteiga');
-    await focusUntil(page, 'ArrowDown', /^(Add 2|Edit|Discard)/, 4);
+    await waitText(page, 'Add 1 task');
+    await focusUntil(page, 'ArrowDown', /^(Add 1|Edit|Discard)/, 4);
+    await focusUntil(page, 'ArrowLeft', /^Add 1/, 3);
+    await press(page, 'Enter');
+    await waitText(page, '1 task added');
+    const created = (await writes()).find(write => write.path === '/task');
+    assert.deepEqual([created.body.title, created.body.projectId, created.body.dueDate], ['Renovar o passaporte', INBOX_ID, dueDateFor(1, '09:00')]);
+    await waitText(page, 'Renovar o passaporte');
+    // Discard empties the text.
+    await focusUntil(page, 'ArrowUp', /^Add tasks/);
+    await press(page, 'Enter');
+    await waitField(page);
+    await compose(page, 'something');
+    await focusUntil(page, 'ArrowDown', /^Continue/, 3);
+    await press(page, 'Enter');
+    await waitText(page, 'Something');
+    await focusUntil(page, 'ArrowDown', /^(Add 1|Edit|Discard)/, 4);
     await focusUntil(page, 'ArrowRight', /^Discard/, 3);
     await press(page, 'Enter');
-    await waitText(page, '7 of 12 left');
-    assert.deepEqual(await writeLines(), []);
+    await waitText(page, 'Send the proposal');
     await page.waitForTimeout(500);
+    await focusUntil(page, 'ArrowUp', /^Add tasks/);
     await press(page, 'Enter');
     await waitField(page);
-    assert.equal(await page.evaluate(() => document.activeElement?.value), '', 'Discard empties the draft');
+    assert.equal(await page.evaluate(() => document.activeElement?.value), '');
+    assert.equal((await writeLines()).filter(line => line === 'POST /task').length, 1);
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'item options: edit through the text field'(browser, name) {
+  async 'edit: title and due through text fields, priority and list by choice'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await openGroceries(page);
-    await focusUntil(page, 'ArrowDown', /^Milk/);
-    await press(page, 'ArrowRight');
-    await waitText(page, 'Dictate or write');
-    await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^In the cart/);
-    await shot('options');
-    await focusUntil(page, 'ArrowDown', /^Edit/, 3);
+    await openWork(page);
+    await focusUntil(page, 'ArrowDown', /^Review the onboarding screens/);
+    await press(page, 'ArrowLeft', 2);
+    assert.match(await focusLabel(page), /^Edit$/);
     await press(page, 'Enter');
-    await waitText(page, 'Edit item');
-    await page.waitForTimeout(500);
-    await assertComposerField(page);
-    assert.equal(await page.evaluate(() => document.activeElement?.value), '2 boxes Milk');
-    await compose(page, 'three boxes of oat milk');
-    await focusUntil(page, 'ArrowDown', /^Save/, 3);
+    await waitText(page, 'Edit task');
+    await waitField(page);
+    assert.match(await focusLabel(page), /Task title/);
+    const title = await assertComposerField(page);
+    assert.equal(title.value, 'Review the onboarding screens');
+    await compose(page, 'Review the new onboarding');
+    await press(page, 'ArrowDown');
+    assert.match(await focusLabel(page), /Due date/);
+    const due = await assertComposerField(page);
+    assert.equal(due.value, 'Tomorrow');
+    await compose(page, 'tomorrow at 4 pm');
+    await focusUntil(page, 'ArrowDown', /^Priority/);
     await press(page, 'Enter');
-    await waitText(page, 'Oat milk');
-    await waitText(page, '3 boxes');
-    const update = (await writes()).find(write => write.path === '/task/demo-groceries-open-1');
-    assert.deepEqual({title: update.body.title, content: update.body.content}, {title: 'Oat milk', content: '3 boxes'});
+    await waitText(page, 'Medium');
+    await focusUntil(page, 'ArrowDown', /^High/);
+    await press(page, 'Enter');
+    await waitText(page, 'Edit task');
     await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^Oat milk/, 'Back on the list, the edited item keeps the focus');
-    await press(page, 'Escape');
-    await waitText(page, 'Pharmacy');
+    assert.match(await focusLabel(page), /^Priority, High/);
+    await focusUntil(page, 'ArrowUp', /^List/);
+    await press(page, 'Enter');
+    await waitText(page, 'Groceries');
+    await focusUntil(page, 'ArrowDown', /^Personal/);
+    await press(page, 'Enter');
+    await waitText(page, 'Edit task');
+    await page.waitForTimeout(500);
+    await shot('edit');
+    await focusUntil(page, 'ArrowDown', /^Save/, 4);
+    await press(page, 'Enter');
+    await waitText(page, 'Saved');
+    const sent = await writes();
+    assert.deepEqual(sent.map(write => `${write.method} ${write.path}`), ['POST /task/move', 'POST /task/demo-work-2']);
+    assert.deepEqual(sent[0].body, [{fromProjectId: 'demo-work', toProjectId: 'demo-personal', taskId: 'demo-work-2'}]);
+    assert.deepEqual(
+      [sent[1].body.title, sent[1].body.projectId, sent[1].body.priority, sent[1].body.dueDate, sent[1].body.isAllDay],
+      ['Review the new onboarding', 'demo-personal', 5, dueDateFor(1, '16:00'), false],
+    );
+    await waitText(page, '6 pending');
+    await waitGone(page, 'Review the onboarding screens');
+
+    // An empty Due clears the due date; text that is not a date is refused.
+    await focusUntil(page, 'ArrowUp', /^Add tasks/);
+    await focusUntil(page, 'ArrowDown', /^Prepare the quarterly report/);
+    await press(page, 'ArrowLeft', 2);
+    await press(page, 'Enter');
+    await waitField(page);
+    await press(page, 'ArrowDown');
+    await compose(page, 'banana');
+    await focusUntil(page, 'ArrowDown', /^Save/, 4);
+    await press(page, 'Enter');
+    await waitText(page, "Couldn't read that date");
+    await focusUntil(page, 'ArrowUp', /Due date/, 6);
+    await compose(page, '');
+    await focusUntil(page, 'ArrowDown', /^Save/, 4);
+    await press(page, 'Enter');
+    await waitText(page, 'Saved');
+    const cleared = (await writes()).find(write => write.path === '/task/demo-work-3');
+    assert.deepEqual([cleared.body.dueDate, cleared.body.startDate], [null, null]);
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'item options: delete with a confirmation step'(browser, name) {
+  async 'delete with a confirmation step, from the row and from the task'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await openGroceries(page);
-    await focusUntil(page, 'ArrowDown', /^Tomatoes/);
-    await press(page, 'ArrowRight');
-    await waitText(page, 'Dictate or write');
-    await focusUntil(page, 'ArrowDown', /^Delete/, 3);
+    await openWork(page);
+    await focusUntil(page, 'ArrowDown', /^Renew the domain/);
+    await press(page, 'ArrowLeft', 3);
+    assert.match(await focusLabel(page), /^Delete$/);
     await press(page, 'Enter');
-    await waitText(page, 'will be deleted from Groceries');
+    await waitText(page, 'will be deleted from Work');
     await page.waitForTimeout(500);
     await shot('confirm');
-    // Back keeps the item.
     await press(page, 'Escape');
-    await waitText(page, 'Dictate or write');
-    await page.waitForTimeout(400);
-    assert.match(await focusLabel(page), /^Delete/);
-    assert.deepEqual(await writeLines(), []);
+    await waitText(page, 'Add tasks');
+    assert.deepEqual(await writeLines(), [], 'Back keeps the task');
+    await page.waitForTimeout(500);
+    await focusUntil(page, 'ArrowDown', /^Renew the domain/);
+    await press(page, 'ArrowLeft', 3);
     await press(page, 'Enter');
-    await waitText(page, 'will be deleted from Groceries');
-    await page.waitForTimeout(400);
-    await focusUntil(page, 'ArrowDown', /^Delete/, 3);
+    await waitText(page, 'will be deleted from Work');
+    await focusUntil(page, 'ArrowDown', /^Delete/, 4);
     await press(page, 'Enter');
-    await waitText(page, '6 of 11 left');
-    await waitGone(page, 'Tomatoes');
-    assert.deepEqual(await writeLines(), ['DELETE /project/demo-groceries/task/demo-groceries-open-0']);
+    await waitText(page, 'Renew the domain deleted');
+    await waitText(page, '6 pending');
+    assert.deepEqual(await writeLines(), ['DELETE /project/demo-work/task/demo-work-4']);
+    // From the task screen, Delete goes back to the list.
+    await focusUntil(page, 'ArrowUp', /^Send the proposal/);
+    await press(page, 'ArrowLeft');
+    await press(page, 'Enter');
+    await waitText(page, 'High priority');
+    await focusUntil(page, 'ArrowDown', /^(Complete|Edit|Delete)/, 10);
+    await focusUntil(page, 'ArrowRight', /^Delete/, 3);
+    await press(page, 'Enter');
+    await waitText(page, 'will be deleted from Work');
+    await focusUntil(page, 'ArrowDown', /^Delete/, 4);
+    await press(page, 'Enter');
+    await waitText(page, '5 pending');
+    await waitText(page, 'Add tasks');
     assert.deepEqual(errors, []);
     await context.close();
   },
@@ -364,83 +508,65 @@ const scenarios = {
   async 'new list through the text field'(browser, name) {
     await mock('/__mock/reset');
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await waitText(page, 'Groceries');
+    await waitText(page, 'Send the proposal');
     await page.waitForTimeout(400);
-    await focusUntil(page, 'ArrowUp', /Lists|Page 1 of 2/, 4);
-    await press(page, 'ArrowRight');
+    await focusUntil(page, 'ArrowUp', /Page 1 of 3/, 12);
+    await press(page, 'ArrowRight', 2);
     await focusUntil(page, 'ArrowDown', /Name of the new list/, 4);
     await assertComposerField(page);
     await compose(page, 'Garden');
     await shot('new-list');
     await focusUntil(page, 'ArrowDown', /^Create/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Nothing to buy');
+    await waitText(page, 'Nothing pending');
     const created = (await writes()).find(write => write.path === '/project');
     assert.deepEqual(created.body, {name: 'Garden', kind: 'TASK', viewMode: 'list'});
     await press(page, 'Escape');
-    await waitText(page, 'Garden');
-    await page.waitForTimeout(500);
-    assert.match(await focusLabel(page), /^Garden/);
+    await waitText(page, 'Reading');
+    await page.waitForTimeout(900);
+    assert.match(await focusLabel(page), /^Garden, All done/, 'Back lands on the new list');
     assert.deepEqual(errors, []);
     await context.close();
   },
 
-  async 'errors: network retry, server error with Try again, rollback'(browser, name) {
+  async 'errors: network retry, server error with Try again'(browser, name) {
     await mock('/__mock/reset');
     await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=0&forMs=1200`);
     const {page, context, errors, shot} = await openApp(browser, name, session);
     await waitText(page, "Can't reach TickTick");
     await shot('offline');
-    // Retried by itself after 2 s.
-    await waitText(page, 'Groceries', 6000);
-    await openGroceries(page);
-    await mock(`/__mock/fail?path=${encodeURIComponent('/complete$')}&status=500&times=1`);
-    await focusUntil(page, 'ArrowDown', /^Milk/);
-    await press(page, 'Enter');
-    await waitText(page, "Couldn't put Milk in the cart");
-    await waitText(page, '7 of 12 left');
-    await shot('rollback');
-    await press(page, 'Escape');
-    await waitText(page, 'Pharmacy');
-    await mock(`/__mock/fail?path=${encodeURIComponent('/project/demo-pharmacy/data$')}&status=500&times=1`);
-    await focusUntil(page, 'ArrowDown', /^Pharmacy/);
-    // Opening reloads the list; a failed refresh keeps what was shown.
-    await press(page, 'Enter');
-    await waitText(page, 'Sunscreen');
+    await waitText(page, 'Send the proposal', 7000);
     await context.close();
 
     await mock('/__mock/reset');
     await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=500&times=1`);
     const failed = await openApp(browser, `${name}-server`, session);
-    await failed.page.evaluate(() => localStorage.removeItem('lumen-lists.cache'));
     await waitText(failed.page, 'TickTick is not answering');
     await waitText(failed.page, 'HTTP 500');
     await failed.page.waitForTimeout(400);
     await failed.shot('server');
     await focusUntil(failed.page, 'ArrowDown', /Try again/, 4);
     await press(failed.page, 'Enter');
-    await waitText(failed.page, 'Groceries');
+    await waitText(failed.page, 'Send the proposal');
     assert.deepEqual([...errors, ...failed.errors], []);
     await failed.context.close();
   },
 
   async 'Portuguese'(browser, name) {
     const {page, context, errors, shot} = await openApp(browser, name, {demo: '1'}, {locale: 'pt-BR'});
-    await waitText(page, 'Mercado');
-    await waitText(page, '7 para comprar');
-    await waitText(page, 'Tudo comprado');
-    await focusUntil(page, 'ArrowDown', /^Mercado/);
-    await press(page, 'Enter');
-    await waitText(page, 'faltam 7 de 12');
+    await waitText(page, 'Enviar a proposta');
+    await waitText(page, 'Atrasadas');
+    await waitText(page, 'Ontem · Trabalho');
+    await waitText(page, 'Caixa de entrada');
+    await focusUntil(page, 'ArrowUp', /^Adicionar tarefas/);
     await press(page, 'Enter');
     await waitField(page);
-    await compose(page, 'Leite, dois quilos de arroz e meia dúzia de ovos');
+    await compose(page, 'Ligar pro João amanhã às 15h e pagar o aluguel daqui a 4 dias');
     await focusUntil(page, 'ArrowDown', /^Continuar/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Já está na lista');
-    await waitText(page, 'Adicionar 2 itens');
-    await waitText(page, '2 kg');
-    await waitText(page, 'Ovos');
+    await waitText(page, 'Adicionar 2 tarefas');
+    await waitText(page, 'Amanhã 15:00');
+    await waitText(page, 'Pagar o aluguel');
     await page.waitForTimeout(500);
     await shot('review');
     assert.deepEqual(errors, []);
@@ -458,43 +584,68 @@ const scenarios = {
       await page.waitForTimeout(900);
       await page.screenshot({path: path.join(screensDir, `${browser.browserType().name()}-${file}.png`)});
     };
-    await waitText(page, 'Groceries');
-    await capture('01-ListHome');
-    await focusUntil(page, 'ArrowUp', /Lists|Page 1 of 2/, 4);
-    await press(page, 'ArrowRight');
-    await capture('02-NewList');
-    await press(page, 'ArrowLeft');
-    await focusUntil(page, 'ArrowDown', /^Groceries/, 4);
+    await waitText(page, 'Send the proposal');
+    await focusUntil(page, 'ArrowDown', /^Send the proposal/);
+    await capture('01-TTPending');
+    await toLists(page);
+    await focusUntil(page, 'ArrowDown', /^Work/);
+    await capture('02-TTLists');
     await press(page, 'Enter');
-    await waitText(page, '7 of 12 left');
-    await focusUntil(page, 'ArrowDown', /^Milk/);
-    await capture('03-ListOpen');
-    await press(page, 'ArrowRight');
-    await waitText(page, 'Dictate or write');
-    await capture('04-ListItem');
-    await focusUntil(page, 'ArrowDown', /^Delete/, 3);
+    await waitText(page, 'Review the onboarding screens');
+    await focusUntil(page, 'ArrowDown', /^Call João about the contract/);
+    await capture('03-TTList');
+    await press(page, 'ArrowLeft');
+    await capture('04-TTSwipe');
+    await press(page, 'Enter');
+    await waitText(page, 'Subtasks · 1 of 3 done');
+    await capture('05-TTTask');
+    await press(page, 'Escape');
+    await waitText(page, 'Add tasks');
+    await page.waitForTimeout(500);
+    await press(page, 'ArrowLeft', 2);
+    await press(page, 'Enter');
+    await waitText(page, 'Edit task');
+    await capture('06-TTEdit');
+    await focusUntil(page, 'ArrowDown', /^Priority/);
+    await press(page, 'Enter');
+    await waitText(page, 'Medium');
+    await capture('07-TTEditPriority');
+    await press(page, 'Escape');
+    await waitText(page, 'Edit task');
+    await press(page, 'Escape');
+    await waitText(page, 'Add tasks');
+    await page.waitForTimeout(500);
+    await press(page, 'ArrowLeft', 3);
     await press(page, 'Enter');
     await waitText(page, 'will be deleted');
-    await capture('05-ListDelete');
+    await capture('08-TTDelete');
     await press(page, 'Escape');
-    await waitText(page, 'Dictate or write');
-    await press(page, 'Escape');
-    await waitText(page, '7 of 12 left');
-    await focusUntil(page, 'ArrowDown', /^In the cart/);
-    await press(page, 'Enter');
-    await waitText(page, 'Bread');
-    await capture('06-ListCart');
-    await press(page, 'Escape');
-    await waitText(page, '7 of 12 left');
-    await focusUntil(page, 'ArrowUp', /^Add items/);
+    await waitText(page, 'Add tasks');
+    await page.waitForTimeout(500);
+    await focusUntil(page, 'ArrowUp', /^Add tasks/);
     await press(page, 'Enter');
     await waitField(page);
-    await capture('07-ListWrite');
-    await compose(page, 'Milk, two kilos of rice and coffee filters');
+    await capture('09-TTWrite');
+    await compose(page, 'Call João tomorrow at 3 pm and pay the rent in 4 days');
     await focusUntil(page, 'ArrowDown', /^Continue/, 3);
     await press(page, 'Enter');
-    await waitText(page, 'Already in the list');
-    await capture('08-ListReview');
+    await waitText(page, 'Add 2 tasks');
+    await capture('10-TTReview');
+    await press(page, 'Escape');
+    await waitText(page, 'Add tasks');
+    await page.waitForTimeout(500);
+    await focusUntil(page, 'ArrowDown', /^Completed/);
+    await press(page, 'Enter');
+    await waitText(page, 'Draft the agenda');
+    await capture('11-TTCompleted');
+    await press(page, 'Escape');
+    await waitText(page, 'Add tasks');
+    await press(page, 'Escape');
+    await waitText(page, 'All done');
+    await page.waitForTimeout(400);
+    await focusUntil(page, 'ArrowUp', /Page 2 of 3/, 8);
+    await press(page, 'ArrowRight');
+    await capture('12-NewList');
     assert.deepEqual(external, []);
     assert.deepEqual(errors, []);
     await context.close();
@@ -502,7 +653,7 @@ const scenarios = {
     const setup = await openApp(browser, `${name}-setup`, {}, {appUrl: PACKAGE_APP});
     await waitText(setup.page, 'Connect TickTick');
     await setup.page.waitForTimeout(900);
-    await setup.page.screenshot({path: path.join(screensDir, `${browser.browserType().name()}-09-ListSetup.png`)});
+    await setup.page.screenshot({path: path.join(screensDir, `${browser.browserType().name()}-13-TTSetup.png`)});
     await setup.context.close();
   },
 };
@@ -526,6 +677,7 @@ try {
         await scenario(browser, name);
         results.push(['pass', browserName, title]);
       } catch (error) {
+        await lastPage?.screenshot({path: path.join(outDir, `${name}-FAILED.png`)}).catch(() => {});
         results.push(['FAIL', browserName, title, String(error?.message ?? error).split('\n').slice(0, process.env.E2E_VERBOSE ? 12 : 1).join(' | ')]);
       }
     }
