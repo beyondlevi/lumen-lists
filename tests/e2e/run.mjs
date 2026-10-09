@@ -16,7 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {unzipSync} from 'fflate';
 import {chromium, firefox} from 'playwright';
-import {dueDateFor, INBOX_ID, MOCK_PORT, MOCK_TIME_ZONE, MOCK_TOKEN, startMockServer} from '../../mock/server.mjs';
+import {dueDateFor, INBOX_ID, MOCK_PORT, MOCK_TIME_ZONE, MOCK_TOKEN, mockNow, setMockNow, startMockServer} from '../../mock/server.mjs';
 import {startStaticServer} from './static-server.mjs';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '../..');
@@ -133,6 +133,20 @@ async function assertComposerField(page) {
 
 async function openApp(browser, name, config, {appUrl = APP, route = '/', locale = 'en-US'} = {}) {
   const context = await browser.newContext({viewport: {width: 600, height: 600}, locale, timezoneId: MOCK_TIME_ZONE});
+  // The page's Date runs as far ahead (or behind) as the mock's; timers and event times stay real.
+  await context.addInitScript(offset => {
+    const RealDate = Date;
+    class ShiftedDate extends RealDate {
+      constructor(...args) {
+        if (args.length) super(...args);
+        else super(RealDate.now() + offset);
+      }
+      static now() {
+        return RealDate.now() + offset;
+      }
+    }
+    globalThis.Date = ShiftedDate;
+  }, mockNow() - Date.now());
   await context.addInitScript(values => {
     if (!sessionStorage.getItem('e2e-config-set')) {
       localStorage.setItem('lumen-lists.dev-config', JSON.stringify(values));
@@ -739,6 +753,9 @@ const scenarios = {
   },
 };
 
+// Today's tasks have times (Call João at 15:00): later in the day one turns overdue and the order on
+// Pending changes. The mock and the browser both run from 09:30 of today in São Paulo instead.
+setMockNow(Date.parse(dueDateFor(0, '09:30').replace('+0000', 'Z')));
 const mockServer = await startMockServer();
 const appServer = await startStaticServer(path.join(root, 'dist'), 4173);
 const packageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'lumen-lists-package-'));

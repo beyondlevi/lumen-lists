@@ -36,6 +36,16 @@ const CORS = {
   'Access-Control-Allow-Headers': 'Authorization, Content-Type',
 };
 
+/**
+ * The mock's "now": the real time, shifted when the e2e run fixes the time of day (setMockNow), so
+ * the fixtures' times and what the browser's clock says agree.
+ */
+let shift = 0;
+export function setMockNow(ms) {
+  shift = ms - Date.now();
+}
+export const mockNow = () => Date.now() + shift;
+
 const formatDate = ms => new Date(ms).toISOString().replace('Z', '+0000');
 const parseDate = value => Date.parse(String(value).replace(/([+-]\d{2})(\d{2})$/, '$1:$2'));
 
@@ -48,7 +58,7 @@ function zoneOffset(ms, timeZone) {
 }
 
 /** Midnight of today + `days` in the mock's time zone. */
-function midnight(days, now = Date.now()) {
+function midnight(days, now = mockNow()) {
   const local = new Date(now + zoneOffset(now, MOCK_TIME_ZONE));
   const utc = Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate() + days);
   return utc - zoneOffset(utc - zoneOffset(utc, MOCK_TIME_ZONE), MOCK_TIME_ZONE);
@@ -73,7 +83,7 @@ function dueFields(task) {
 
 function load() {
   const fixtures = JSON.parse(fs.readFileSync(path.join(root, 'src/demo/fixtures.json'), 'utf8')).en;
-  const now = Date.now();
+  const now = mockNow();
   const projectId = list => (list.inbox ? INBOX_ID : list.id);
   const projects = fixtures.filter(list => !list.inbox).map((list, index) => ({id: list.id, name: list.name, closed: false, kind: 'TASK', viewMode: 'list', sortOrder: index}));
   // A note list and a closed list: the app must not show them.
@@ -157,7 +167,7 @@ export function startMockServer(port = MOCK_PORT, host = '127.0.0.1') {
             pattern: new RegExp(url.searchParams.get('path') ?? '.'),
             status: Number(url.searchParams.get('status') ?? 500),
             times: url.searchParams.has('forMs') ? Infinity : Number(url.searchParams.get('times') ?? 1),
-            until: url.searchParams.has('forMs') ? Date.now() + Number(url.searchParams.get('forMs')) : Infinity,
+            until: url.searchParams.has('forMs') ? mockNow() + Number(url.searchParams.get('forMs')) : Infinity,
           });
           return send(res, 200, {ok: true});
         }
@@ -171,7 +181,7 @@ export function startMockServer(port = MOCK_PORT, host = '127.0.0.1') {
       if (req.headers.authorization !== `Bearer ${MOCK_TOKEN}`) {
         return send(res, 401, {errorCode: 'unauthorized'});
       }
-      const failure = failures.find(entry => entry.times > 0 && Date.now() < entry.until && entry.pattern.test(url.pathname));
+      const failure = failures.find(entry => entry.times > 0 && mockNow() < entry.until && entry.pattern.test(url.pathname));
       if (failure) {
         failure.times -= 1;
         if (failure.status === 0) {
@@ -260,7 +270,7 @@ export function startMockServer(port = MOCK_PORT, host = '127.0.0.1') {
         const found = task(decodeURIComponent(match[2]));
         if (!found) return send(res, 404, {errorCode: 'task_not_found'});
         found.status = 2;
-        found.completedTime = formatDate(Date.now());
+        found.completedTime = formatDate(mockNow());
         return send(res, 200);
       }
       if (method === 'DELETE' && (match = /^\/project\/([^/]+)\/task\/([^/]+)$/.exec(route))) {
