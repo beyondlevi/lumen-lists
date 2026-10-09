@@ -1,118 +1,163 @@
-# lumen-lists
+# Unofficial TickTick for Lumen
 
-Shopping lists on [Rokid Lumen](https://github.com/beyondlevi/rokid-lumen) glasses, kept in your
-[TickTick](https://ticktick.com) lists and built as a Meta Ray-Ban Display web app with the official
-UI Toolkit for Meta Ray-Ban Display: check items off as they go in the cart, add items dictated or
-written with the band.
+Your [TickTick](https://ticktick.com) on [Rokid Lumen](https://github.com/beyondlevi/rokid-lumen)
+glasses, built as a Meta Ray-Ban Display web app with the official UI Toolkit for Meta Ray-Ban
+Display: the tasks pending in every list and in the Inbox, by day; complete, view, edit, delete and
+add tasks, dictated or written with the band.
 
-> **Unofficial.** Not affiliated with, endorsed or sponsored by TickTick (Appest Inc.), Meta
+> **Unofficial.** Not made by, affiliated with, endorsed or sponsored by TickTick (Appest Inc.), Meta
 > Platforms, Inc. or Rokid. TickTick is a trademark of its owner, used here only to say what the app
-> works with.
+> works with. The app talks to TickTick through its public Open API with your own token.
 
-**Status:** 0.1.0. Tested against a mock of the TickTick Open API and in demo mode; not yet on the
-glasses or against a real TickTick account (see [Known limits](#known-limits)).
+**Status:** 0.2.0. Tested against a mock of the TickTick Open API and in demo mode. Version 0.1.0
+(the shopping-list app this grew from) was tried on the glasses with a real TickTick account.
+
+The package id stays `cloud.bynd.lumen.lists` and the setting `ticktick.token`, so installing 0.2.0
+over 0.1.0 keeps the token already saved on the phone.
 
 ## What it does
 
-Your TickTick lists are your shopping lists. The phone, the computer and the glasses see the same
-items, because the app keeps nothing of its own: it reads and writes TickTick.
-
 | Screen | What you do there |
 | --- | --- |
-| **Lists** (start) | One row per TickTick list, with how many items are left to buy ("12 to buy", "All bought"). The list you opened last has the focus. **New** (the `+` beside Lists) creates a list. |
-| **A list** | "Groceries · 7 of 12 left". *Add items* first, then the items to buy (title, and the quantity or note under it), then *In the cart · 5*. An **index tap** on an item puts it in the cart at once (it is completed in TickTick); if TickTick refuses, it comes back with a message. **Swipe right** on an item opens its options. |
-| **Item options** | *In the cart*, *Edit* (the text field with the item's text: dictate or write), *Delete* (asks once more). |
-| **In the cart** | What you put in the cart in this list in the last 24 hours. An index tap puts an item back in the list. |
-| **Add items** | A text field: an index tap on it opens Lumen's composer, where you dictate or write with the band, as many items as you like ("Milk, two kilos of rice and coffee filters"). Then *Continue*. |
-| **Review** | The items understood, each with a checkbox (an index tap unchecks one), then *Add 3*, *Edit* (back to the text) and *Discard*. An item already in the list is shown as such and not added twice. |
-| **Connect TickTick** | Shown while the token is missing or TickTick refuses it, with the three steps below and *Try again*. |
+| **Pending** (start, first tab) | Every pending task of every list and of the Inbox, grouped into Overdue, Today, Tomorrow, each of the next days by name, Later and No date; sorted by due date, then priority. Each row: the checkbox in the priority's color (high red, medium yellow, low blue, none gray), the title, and the due date (red when overdue, blue when today) with the list. *Add tasks* first. |
+| **Lists** (second tab) | The Inbox, then your lists: "7 pending", "7 pending · 1 overdue", "All done". |
+| **New** (third tab) | A text field for a list name, then Create. |
+| **A list** | *Add tasks*, the pending tasks with their due dates, and *Completed · N* last. |
+| **Options on a row** | Swipe **left** on a task: View, Edit and Delete appear (icons). Swipe left again to move between them, right to go back to the row. |
+| **Task** (View) | Title, due date and time, priority, tags, notes and subtasks ("1 of 3 done", listed). Complete, Edit, Delete. |
+| **Edit** | Title and Due are real text fields (dictate or write: "tomorrow 3 pm", "amanhã 15h"; empty clears the due date). List and Priority (None, Low, Medium, High) open a choice. Save. |
+| **Add tasks** | A text field for one or more tasks: "Call João tomorrow at 3 pm and pay the rent on Friday". Continue. |
+| **Review** | The tasks understood, each with its due date and a checkbox (an index tap leaves one out), the List they go to (the list you were in, or the Inbox from Pending), then *Add N*, Edit (back to the text) and Discard. |
+| **Completed** | The tasks completed in the list in the last 7 days. An index tap makes one pending again. |
+| **Delete** | A confirmation step. Back keeps the task. |
+| **Connect TickTick** | While the token is missing or refused: the three steps and Try again. |
 
-The middle tap is Back everywhere: it goes up one screen (from Review, back to the list, keeping
-the text), and closes the app from the start screen.
+An **index tap** on a task completes it at once; if TickTick refuses, it comes back with a message.
+The **middle tap** is Back everywhere: up one screen, and out of the app from the start screen.
 
-### How dictated or written text becomes items
+### How dictated or written text becomes tasks
 
-- Items are split on new lines, commas and the last "and" (English) or "e" (Portuguese) of each
-  line: "milk, eggs and bread" gives three items. A decimal comma ("1,5 kg") and a number with "e"
-  ("vinte e cinco") are not split.
-- A leading quantity becomes the item's second line (the TickTick task's content): "two kilos of
-  rice" and "2 kg de arroz" give *Rice* / *Arroz* with "2 kg". Numbers in digits, fractions (½, 1/2)
-  or words in English and Portuguese ("twenty-five", "vinte e cinco", "half a", "meio", "a dozen",
-  "meia dúzia"), and units such as kg, g, L, ml, lb, oz, boxes, packs, bottles, cans, bags, jars,
-  caixas, pacotes, garrafas, latas, sacos, potes, unidades.
-- The first letter of each item is capitalized. Articles ("a", "some", "um", "uma") are dropped.
-- Both languages are understood whatever the glasses' language is.
+- Tasks are split on new lines, ";" and commas (not a decimal comma). An "and" / "e" splits only when
+  both sides have a due date of their own: "Call João tomorrow at 3 pm and pay the rent on Friday"
+  is two tasks, "buy milk and eggs tomorrow" is one.
+- The due date is read with [chrono](https://github.com/wanasit/chrono) in English and Portuguese
+  ("tomorrow at 3 pm", "next Monday", "in 4 days", "amanhã às 15h", "na sexta", "dia 20 de
+  outubro"), whatever the glasses' language, and taken out of the title with the words that led to
+  it ("on", "at", "na", "às"…). Without a time, the task is due all day.
+- The first letter of the title is capitalized.
+
+### Due dates
+
+The app keeps TickTick's `dueDate`, `isAllDay` and `timeZone`. A timed task shows in the glasses'
+time zone; an all-day task is the calendar day it was set for, in its own time zone. New tasks and
+edits are saved with the glasses' time zone, all-day tasks at midnight of their day there. Dates and
+times are written in the wearer's language (English, or Portuguese for `pt-*`), times as 15:00.
 
 ## Setup
 
-1. On [ticktick.com](https://ticktick.com): **Settings › Account › API Token**. Create a token and
-   copy it.
-2. Install the package on the glasses (below), then on your phone open **Lumen › Apps › Lists** and
-   paste the token in **TickTick API token**.
-3. Open Lists on the glasses: your TickTick lists show up.
+1. In TickTick: **Settings › Account › API Token**. Create a token and copy it.
+2. Install the package on the glasses (below), then on your phone open **Lumen › Apps › TickTick**
+   and paste the token in **TickTick API token**.
+3. Open TickTick on the glasses: your tasks and lists show up.
 
-The app's settings (`lumen_config` in `public/manifest.webmanifest`):
+Settings (`lumen_config` in `public/manifest.webmanifest`):
 
 | Key | Type | |
 | --- | --- | --- |
 | `ticktick.token` | secret | The TickTick API token. Required. |
-| `demo` | text, optional | `1` (or `on`, `true`, `yes`) shows demo lists instead of TickTick. |
-
-Lists shows *task* lists that are not closed (note lists are left out). The app follows setting
-changes made on the phone while it is open.
+| `demo` | text, optional | `1` (or `on`, `true`, `yes`) shows demo tasks instead of TickTick. |
 
 ### Installing the package
 
 `npm run package` writes `dist/lumen-lists.mrbd.zip`. Install it from the phone (Lumen companion,
-Apps tab, **Add › Offline package from a file**) or from a computer with Lumen's
-`scripts/push-webapp.sh dist/lumen-lists.mrbd.zip`. The manifest declares `lumen_internet: true`, so
-Lumen brings up the internet (the phone's when the glasses have none) for the calls to TickTick.
+Apps tab, **Add › Offline package from a file**, or **Replace the package** on the installed app) or
+from a computer with Lumen's `scripts/push-webapp.sh dist/lumen-lists.mrbd.zip`. The manifest
+declares `lumen_internet: true`, so Lumen brings up the internet for the calls to TickTick.
 
 ## Privacy
 
 - The app talks only to TickTick (`https://api.ticktick.com`), straight from the glasses, with your
   token. There is no server in between, and no analytics.
 - The token is a Lumen `secret`: it stays on the glasses, the companion never shows it, and the app
-  never logs it, puts it in an address or stores it (only the development fallback in a regular
-  browser keeps it in that browser's localStorage, see [Development](#development)).
-- On the glasses the app keeps only the names and item counts of your lists (to show the start
-  screen at once while it loads) and the id of the list opened last, in the app's own storage.
-  Items are always read from TickTick.
+  never logs it or puts it in an address (only the development fallback in a regular browser keeps
+  it in that browser's localStorage, see [Development](#development)).
+- On the glasses the app keeps only the names and task counts of your lists (to show them at once
+  while they load) and the id of the list opened last. Tasks are always read from TickTick.
 
 ## Demo mode
 
-Fictional lists (Groceries, Pharmacy, Hardware store; in Portuguese Mercado, Farmácia, Loja de
-ferragens), with no network and nothing stored: every change lives in memory until the app closes.
-Turn it on with the `demo` setting (`1`) on the phone, or with `?demo=1` in the address in a browser
-(`?demo=0` turns it off). The screenshots of this app are taken in demo mode.
+Fictional tasks in an Inbox and four lists (Work, Groceries, Personal, Reading; in Portuguese
+Caixa de entrada, Trabalho, Mercado, Pessoal, Leitura), dated from today, with no network and
+nothing stored. Turn it on with the `demo` setting (`1`) on the phone, or `?demo=1` in the address
+in a browser (`?demo=0` turns it off). The screenshots of this app are taken in demo mode.
+
+## TickTick API use
+
+All calls go to `https://api.ticktick.com/open/v1` with `Authorization: Bearer <token>`:
+
+| Call | For |
+| --- | --- |
+| `GET /project` | The lists (task lists that are not closed; note lists are left out). |
+| `GET /project/inbox/data` | The Inbox and its pending tasks (see below). |
+| `GET /project/{id}/data` | A list's pending tasks. |
+| `POST /task/completed` | Completed: a list's tasks completed in the last 7 days. |
+| `POST /task`, `POST /task/batch` | Adding one task, or several (up to 50 per request). |
+| `POST /project/{id}/task/{id}/complete` | Completing a task. |
+| `POST /task/{id}` | Editing (title, due date, priority); reopening (`status: 0`). |
+| `POST /task/move` | Moving a task to another list in Edit, before the update. |
+| `DELETE /project/{id}/task/{id}` | Deleting a task. |
+| `POST /project` | A new list. |
+
+**How Pending is fetched.** The app reads `GET /project`, then each list's
+`GET /project/{id}/data` (four at a time) and the Inbox's, and groups the pending tasks itself. It
+does not use `POST /task/filter`: that call returns at most 200 tasks, filters on `startDate` (so
+tasks without dates are not certain to come back), and its documentation does not say how it treats
+the Inbox. The per-list reads also give the counts on Lists and each list's screen at once.
+
+**The Inbox.** `GET /project` does not list it. The documentation names the Inbox `inbox` in the
+`projectIds` of `POST /task/undone` and says `POST /task/completeTasks` uses it when `projectId` is
+empty; the app reads it with `GET /project/inbox/data` and takes its real id from the answer (the
+`project` there, or the `projectId` of its tasks) for later calls. That `GET /project/inbox/data`
+answers is not stated in the documentation for that endpoint.
+
+**Reopening** has no documented endpoint. `reopenTask` in `src/ticktick/client.ts` sends
+`POST /task/{id}` with `status: 0`, which reopens the task on TickTick (seen by the owner with 0.1.0).
+If TickTick ever answers with the task still completed, it creates a copy in the list and deletes
+the completed one.
+
+**Clearing a due date** in Edit sends `dueDate: null` and `startDate: null`; the documentation does
+not say how TickTick takes it.
+
+Network failures are retried after 2, 4, 8 and 15 seconds, and everything refreshes when the app
+comes back into view.
 
 ## Development
 
-Node 22. React 19 + Vite + TypeScript with `@wearables-ui-toolkit/mrbd` 129.
+Node 22. React 19 + Vite + TypeScript with `@wearables-ui-toolkit/mrbd` 129, and `chrono-node`.
 
 ```sh
 npm ci
 npm run dev                  # http://localhost:5173/?demo=1
 npm run typecheck
-npm test                     # unit tests (Vitest): parser, API client, reopen, config, strings
+npm test                     # unit tests (Vitest, in America/Sao_Paulo): parser, due dates, API client, reopen, config, strings
 npx playwright install chromium firefox
 npm run package              # builds and writes dist/lumen-lists.mrbd.zip
 npm run test:e2e             # Playwright, keyboard only, on a mock TickTick (needs the package)
 npm run mock                 # the mock alone, on http://127.0.0.1:8091
-npm run icons                # renders public/icon-*.png (monochrome cart)
+npm run icons                # renders public/icon-*.png (a list with a check)
 ```
 
 - In a regular browser there is no `window.lumen`, so settings come from the address:
-  `http://localhost:5173/?ticktick.token=<token>` (kept in localStorage, removed from the address)
-  and, for the mock, `&ticktick.api=http://127.0.0.1:8091` with the token `MOCK_TOKEN` from
-  `mock/server.mjs`. Don't paste a real token in a shared browser.
-- `npm run test:e2e` serves `dist/` and the unzipped package like Lumen does (static files with an
-  SPA fallback on `127.0.0.1`) and runs every scenario in Firefox (Lumen's engine is GeckoView,
-  Firefox 156) and Chromium: setup, a refused token, lists, putting items in the cart and back
-  (both ways of reopening), adding items through the text field (it checks the field is a real
-  `<textarea>` and that Enter on it is not prevented, then fills it the way the composer does),
-  review, edit, delete, a new list, network and server errors, Portuguese, and the offline package
-  in demo mode with a 600x600 capture of every screen in `.e2e-output/screens/`.
+  `?ticktick.token=<token>` (kept in localStorage, removed from the address) and, for the mock,
+  `&ticktick.api=http://127.0.0.1:8091` with the token `MOCK_TOKEN` from `mock/server.mjs`.
+- `npm run test:e2e` serves `dist/` and the unzipped package like Lumen does and runs every scenario
+  in Firefox (Lumen's engine is GeckoView, Firefox 156) and Chromium: setup, a refused token,
+  Pending and completing, the left swipe and its actions, View, Lists and Completed, reopening (both
+  ways), adding tasks through the text field with due dates and another list, adding to the Inbox,
+  Edit (text fields and choices, moving, clearing the due date), Delete, a new list, network and
+  server errors, Portuguese, and the offline package in demo mode with a 600x600 capture of every
+  screen in `.e2e-output/screens/`. It checks that each text field is a real `<textarea>` and that
+  Enter on it is not prevented, then fills it the way the composer does.
   `E2E_BROWSERS=firefox` and `E2E_ONLY=<regex>` narrow it down.
 - The UI Toolkit's structure validator and quality gate (`check-webapp.mjs`) pass on this app.
 
@@ -121,48 +166,23 @@ npm run icons                # renders public/icon-*.png (monochrome cart)
 | Path | |
 | --- | --- |
 | `src/ticktick/` | The TickTick Open API client and the app's types. |
-| `src/items/parse.ts` | Text to items (split, quantities, duplicates, edit text). |
-| `src/state/` | Loading with retries, the item actions, settings, focus on the way back. |
+| `src/tasks/` | Due dates (time zones, grouping, formatting), the text parser, labels. |
+| `src/state/` | Loading with retries, the task actions, settings, the way back to a row. |
 | `src/pages/` | One file per screen. |
+| `src/components/` | State screens, the swipe's mirrored arrows, row helpers. |
 | `src/demo/` | Demo mode: fixtures (also used by the mock) and an in-memory client. |
 | `src/i18n/strings.ts` | Every visible string, in English and Portuguese. |
 | `mock/server.mjs` | The mock TickTick for the e2e tests. |
-| `scripts/` | Packaging (`package-offline.mjs`) and icons. |
-
-## TickTick API use
-
-All calls go to `https://api.ticktick.com/open/v1` with `Authorization: Bearer <token>`:
-
-| Call | For |
-| --- | --- |
-| `GET /project` | The lists. |
-| `GET /project/{id}/data` | A list's open items (and the counts on the start screen). |
-| `POST /task/completed` | The cart: items completed in the list in the last 24 hours. |
-| `POST /task`, `POST /task/batch` | Adding one item, or several (up to 50 per request). |
-| `POST /project/{id}/task/{id}/complete` | Putting an item in the cart. |
-| `POST /task/{id}` | Editing an item (title and content). |
-| `DELETE /project/{id}/task/{id}` | Deleting an item. |
-| `POST /project` | A new list. |
-
-Network failures are retried after 2, 4, 8 and 15 seconds, and lists refresh when the app comes
-back into view.
-
-**Putting an item back from the cart** has no documented endpoint. `reopenItem` in
-`src/ticktick/client.ts` first sends `POST /task/{id}` with `status: 0`; if TickTick answers with
-the task open, that is it. Otherwise it creates a new task with the same title and content in the
-list and deletes the completed one, so it doesn't stay in the cart next to its copy (TickTick's
-completed history then loses that entry). Which of the two happens with the real API has not been
-checked yet.
 
 ## Known limits
 
-- Not yet run on the glasses, and not against a real TickTick account: the API mapping follows the
-  documentation and is tested against a mock.
-- Reopening (above) is unverified against TickTick.
-- Lists shared with you read-only should make TickTick refuse changes; the app then shows a message
-  and rolls back. Not tested.
-- The cart shows at most 200 items (the API's limit).
-- The app's JavaScript is about 220 KB gzipped, most of it the UI Toolkit.
+- 0.2.0 has not been run on the glasses or against a real TickTick account yet.
+- Recurring tasks are shown and completed as TickTick answers them; the app does not show the
+  repeat rule. Tags, notes and subtasks are shown but not edited; reminders are not shown.
+- Swiping left reveals the actions because the app mirrors ArrowLeft and ArrowRight inside the
+  Toolkit's `SwipeToReveal`; moving between View, Edit and Delete is also mirrored.
+- Shared lists you can only read should refuse changes; the app then shows a message and rolls
+  back. Not tested.
 
 ## License
 
