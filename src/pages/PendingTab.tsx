@@ -6,7 +6,7 @@ import {successorOf} from '../components/focus';
 import {RowHints} from '../components/RowHints';
 import {ErrorContent, LoadingContent, StateContent} from '../components/StateContent';
 import {mirrorArrows} from '../components/mirrorArrows';
-import {revealedBy, swipeActions, type RowActions} from '../components/taskRows';
+import {spotOf, swipeActions, type RowActions, type SwipeSpot} from '../components/taskRows';
 import {PRIORITY_TINT, secondLine} from '../components/taskStyle';
 import {useRows} from '../components/useRows';
 import {t} from '../i18n/strings';
@@ -22,7 +22,7 @@ const ADD_ROW = '__add';
 export function PendingTab() {
   const {lists, loadAll, allPending, list, complete, clock} = useTasks();
   const {rowRef, go, moveTo} = useRows('pending', '/');
-  const [revealed, setRevealed] = useState(false);
+  const [spot, setSpot] = useState<SwipeSpot>('row');
 
   if (lists?.data == null) {
     return lists?.status === 'error' ? <ErrorContent error={lists.error} onRetry={() => loadAll()} /> : <LoadingContent />;
@@ -64,7 +64,7 @@ export function PendingTab() {
                 actions={swipeActions(task, actions)}
                 onKeyDownCapture={mirrorArrows}
                 onKeyUpCapture={mirrorArrows}
-                onFocus={event => setRevealed(revealedBy(event))}>
+                onFocus={event => setSpot(spotOf(event))}>
                 <ListItem
                   ref={rowRef(task.id)}
                   data-task-row=""
@@ -79,7 +79,7 @@ export function PendingTab() {
           </Fragment>
         ))}
       </VerticalList>
-      <RowHints revealed={revealed} />
+      <RowHints spot={spot} />
     </div>
   );
 }

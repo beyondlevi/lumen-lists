@@ -2,7 +2,7 @@
   "id": "cloud.bynd.lumen.lists",
   "name": "Unofficial TickTick for Lumen",
   "short_name": "TickTick",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Unofficial TickTick client for Rokid Lumen glasses: pending tasks across your lists and Inbox, complete, add, edit and delete tasks. Not made by or affiliated with TickTick/Appest.",
   "lang": "en",
   "start_url": "./",

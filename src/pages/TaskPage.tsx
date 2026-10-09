@@ -1,4 +1,5 @@
 import calendarFilled from '@wearables-ui-toolkit/icons/svg/calendar__filled.svg';
+import clockFilled from '@wearables-ui-toolkit/icons/svg/clock__filled.svg';
 import circleAlertFilled from '@wearables-ui-toolkit/icons/svg/circlealert__filled.svg';
 import pencilFilled from '@wearables-ui-toolkit/icons/svg/pencil__filled.svg';
 import squareCheckFilled from '@wearables-ui-toolkit/icons/svg/squarecheck__filled.svg';
@@ -53,8 +54,8 @@ export function TaskPage() {
               {task.title}
             </TextView>
             <div className="fact">
-              <IconImage source={calendarFilled} className="fact-icon" />
-              <TextView as="p" textStyle={TextStyle.BODY2} textColor={tone === 'normal' || !task.due ? TextColor.PRIMARY : TextColor.ACCENT}>
+              <IconImage source={tone === 'overdue' ? circleAlertFilled : tone === 'today' ? clockFilled : calendarFilled} className="fact-icon" />
+              <TextView as="p" textStyle={tone === 'normal' ? TextStyle.BODY2 : TextStyle.BODY2_EMPHASIZED} textColor={TextColor.PRIMARY}>
                 {tone === 'overdue' ? t('overdueLine', {due}) : due}
               </TextView>
             </div>

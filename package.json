@@ -2,7 +2,7 @@
   "name": "lumen-lists",
   "private": true,
   "license": "MIT",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "type": "module",
   "description": "Unofficial TickTick client for Rokid Lumen glasses, built as a Meta Ray-Ban Display web app.",
   "scripts": {

@@ -1,7 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState, type Dispatch, type SetStateAction} from 'react';
 import {countOverdue, type Clock} from '../tasks/due';
 import {TickTickError, type List, type Task, type TasksApi} from '../ticktick/types';
-import {asError, CACHE_KEY, inBatches, loading, readCache, RETRY_DELAYS_MS, settled, writeStorage, type CachedList, type LoadOptions, type Resource} from './resource';
+import {asError, CACHE_KEY, inBatches, loading, readCache, RETRY_DELAYS_MS, retrying, settled, writeStorage, type CachedList, type LoadOptions, type Resource} from './resource';
 
 /** A list with its counts, as the Lists tab shows it. */
 export type ListSummary = List & {pending: number; overdue: number};
@@ -63,36 +63,47 @@ export function useTasksData(api: TasksApi | null, persist: boolean, ready: bool
     return clearRetries;
   }, [api, persist]);
 
-  /** Runs a read; network failures come back by themselves on the retry schedule. */
-  const guard = useCallback(async <T>(key: string, run: (client: TasksApi) => Promise<T>, retry: () => void): Promise<T | TickTickError> => {
-    const client = apiRef.current;
-    const started = generation.current;
-    if (!client) {
-      return new TickTickError('auth');
-    }
-    try {
-      const value = await run(client);
-      const pendingRetry = retries.current.get(key);
-      if (pendingRetry?.timer) clearTimeout(pendingRetry.timer);
-      retries.current.delete(key);
-      return value;
-    } catch (caught) {
-      const error = asError(caught);
-      if (started !== generation.current) {
+  /**
+   * Runs a read. A network failure is tried again after 2, 4, 8 and 15 s (the
+   * phone's internet can take half a minute to come up); meanwhile the error is
+   * marked `retrying` and the screen keeps loading. A load that is not itself a
+   * retry starts the schedule over.
+   */
+  const guard = useCallback(
+    async <T>(key: string, fresh: boolean, run: (client: TasksApi) => Promise<T>, retry: () => void): Promise<T | TickTickError> => {
+      const client = apiRef.current;
+      const started = generation.current;
+      if (!client) {
+        return new TickTickError('auth');
+      }
+      const scheduled = retries.current.get(key);
+      if (scheduled?.timer) clearTimeout(scheduled.timer);
+      if (fresh) retries.current.delete(key);
+      try {
+        const value = await run(client);
+        retries.current.delete(key);
+        return value;
+      } catch (caught) {
+        const error = asError(caught);
+        if (started !== generation.current) {
+          return error;
+        }
+        if (error.kind === 'auth') {
+          setRefused(true);
+        } else if (error.kind === 'network') {
+          const attempt = retries.current.get(key)?.attempt ?? 0;
+          if (attempt < RETRY_DELAYS_MS.length) {
+            retries.current.set(key, {attempt: attempt + 1, timer: setTimeout(retry, RETRY_DELAYS_MS[attempt])});
+            retrying.add(error);
+          } else {
+            retries.current.delete(key);
+          }
+        }
         return error;
       }
-      if (error.kind === 'auth') {
-        setRefused(true);
-      } else if (error.kind === 'network') {
-        const scheduled = retries.current.get(key) ?? {attempt: 0, timer: null};
-        if (scheduled.timer) clearTimeout(scheduled.timer);
-        if (scheduled.attempt < RETRY_DELAYS_MS.length) {
-          retries.current.set(key, {attempt: scheduled.attempt + 1, timer: setTimeout(retry, RETRY_DELAYS_MS[scheduled.attempt])});
-        }
-      }
-      return error;
-    }
-  }, []);
+    },
+    [],
+  );
 
   const loaders = useRef({
     all: (_options?: LoadOptions) => {},
@@ -106,6 +117,7 @@ export function useTasksData(api: TasksApi | null, persist: boolean, ready: bool
       setLists(previous => loading(previous, options.silent));
       void guard<Loaded>(
         'all',
+        !options.retry,
         async client => {
           const [found, inbox] = await Promise.all([
             client.lists(),
@@ -127,7 +139,7 @@ export function useTasksData(api: TasksApi | null, persist: boolean, ready: bool
           });
           return {lists: inbox ? [inbox.list, ...found] : found, pending: tasks};
         },
-        () => loaders.current.all({silent: true}),
+        () => loaders.current.all({silent: true, retry: true}),
       ).then(result => {
         if (started !== generation.current) return;
         setLists(previous => settled(previous, result instanceof TickTickError ? result : result.lists, options.silent));
@@ -151,7 +163,7 @@ export function useTasksData(api: TasksApi | null, persist: boolean, ready: bool
       const started = generation.current;
       setPending(previous => ({...previous, [listId]: loading(previous[listId], options.silent)}));
       const read = (client: TasksApi) => (listId === inboxId ? client.inbox().then(inbox => inbox.tasks) : client.pendingTasks(listId));
-      void guard(`list:${listId}`, read, () => loaders.current.list(listId, {silent: true})).then(result => {
+      void guard(`list:${listId}`, !options.retry, read, () => loaders.current.list(listId, {silent: true, retry: true})).then(result => {
         if (started !== generation.current) return;
         setPending(previous => ({...previous, [listId]: settled(previous[listId], result, options.silent)}));
       });
@@ -163,7 +175,7 @@ export function useTasksData(api: TasksApi | null, persist: boolean, ready: bool
     (listId: string, options: LoadOptions = {}) => {
       const started = generation.current;
       setCompleted(previous => ({...previous, [listId]: loading(previous[listId], options.silent)}));
-      void guard(`completed:${listId}`, client => client.completedTasks(listId), () => loaders.current.completed(listId, {silent: true})).then(result => {
+      void guard(`completed:${listId}`, !options.retry, client => client.completedTasks(listId), () => loaders.current.completed(listId, {silent: true, retry: true})).then(result => {
         if (started !== generation.current) return;
         setCompleted(previous => ({...previous, [listId]: settled(previous[listId], result, options.silent)}));
       });

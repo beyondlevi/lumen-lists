@@ -11,5 +11,7 @@ export default defineConfig({
   test: {
     include: ['tests/unit/**/*.test.ts'],
     environment: 'node',
+    // The toolkit ships CSS and SVG next to its JavaScript: let Vite load it in tests.
+    server: {deps: {inline: [/@wearables-ui-toolkit/]}},
   },
 });

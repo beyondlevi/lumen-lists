@@ -8,7 +8,7 @@ import {successorOf} from '../components/focus';
 import {RowHints} from '../components/RowHints';
 import {ErrorContent, LoadingContent} from '../components/StateContent';
 import {mirrorArrows} from '../components/mirrorArrows';
-import {revealedBy, swipeActions, type RowActions} from '../components/taskRows';
+import {spotOf, swipeActions, type RowActions, type SwipeSpot} from '../components/taskRows';
 import {PRIORITY_TINT, secondLine} from '../components/taskStyle';
 import {useRows} from '../components/useRows';
 import {formatNumber, t, tp} from '../i18n/strings';
@@ -25,7 +25,7 @@ export function ListPage() {
   const {listId = ''} = useParams();
   const {list, pendingTasks, loadList, completedTasks, loadCompleted, complete, rememberList, clock} = useTasks();
   const {rowRef, go, moveTo} = useRows(`list:${listId}`, listPath(listId));
-  const [revealed, setRevealed] = useState(false);
+  const [spot, setSpot] = useState<SwipeSpot>('row');
   const tasks = pendingTasks(listId);
   const done = completedTasks(listId);
   const name = listName(list(listId));
@@ -69,7 +69,7 @@ export function ListPage() {
               actions={swipeActions(task, actions)}
               onKeyDownCapture={mirrorArrows}
               onKeyUpCapture={mirrorArrows}
-              onFocus={event => setRevealed(revealedBy(event))}>
+              onFocus={event => setSpot(spotOf(event))}>
               <ListItem
                 ref={rowRef(task.id)}
                 data-task-row=""
@@ -90,7 +90,7 @@ export function ListPage() {
             onClick={() => go(COMPLETED_ROW, completedPath(listId))}
           />
         </VerticalList>
-        {pending.length > 0 ? <RowHints revealed={revealed} /> : null}
+        {pending.length > 0 ? <RowHints spot={spot} /> : null}
       </div>
     </Page>
   );

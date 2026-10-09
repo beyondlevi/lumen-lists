@@ -1,4 +1,6 @@
-import {IconTintColor, SubtitleTextColor, TimestampPosition, TimestampTextColor} from '@wearables-ui-toolkit/mrbd';
+import clockFilled from '@wearables-ui-toolkit/icons/svg/clock__filled.svg';
+import circleAlertFilled from '@wearables-ui-toolkit/icons/svg/circlealert__filled.svg';
+import {IconTintColor, SubtitleTextColor, type IconSource} from '@wearables-ui-toolkit/mrbd';
 import type {DueTone} from '../tasks/due';
 import {dueAndList} from '../tasks/labels';
 import type {Priority} from '../ticktick/types';
@@ -14,27 +16,27 @@ export const PRIORITY_TINT: Record<Priority, IconTintColor> = {
 type SecondLine = {
   subtitle?: string;
   subtitleTextColor?: SubtitleTextColor;
-  timestamp?: string;
-  timestampPosition?: TimestampPosition;
-  timestampTextColor?: TimestampTextColor;
+  secondaryIcon?: IconSource;
+  secondaryIconTintColor?: IconTintColor;
 };
 
 /**
- * A task row's second line: the due date and, on Pending, the list. Today's
- * date is in the accent color, before the list; an overdue line is red.
+ * A task row's second line: the due date and, on Pending, the list, in the
+ * primary text color so it reads on the glasses' green display, where colors
+ * turn into brightness. Overdue and today are told by an icon before it (an
+ * alert, a clock), not by the color of the text.
  */
 export function secondLine(due: string, list: string, tone: DueTone): SecondLine {
   if (!due) return {subtitle: list || undefined};
-  if (tone === 'today') {
-    return {subtitle: list || undefined, timestamp: due, timestampPosition: TimestampPosition.SUBTITLE, timestampTextColor: TimestampTextColor.ACCENT};
-  }
   return {
     subtitle: list ? dueAndList(due, list) : due,
-    subtitleTextColor: tone === 'overdue' ? SubtitleTextColor.NEGATIVE : undefined,
+    subtitleTextColor: SubtitleTextColor.PRIMARY,
+    ...(tone === 'overdue' ? {secondaryIcon: circleAlertFilled, secondaryIconTintColor: IconTintColor.PRIMARY} : {}),
+    ...(tone === 'today' ? {secondaryIcon: clockFilled, secondaryIconTintColor: IconTintColor.PRIMARY} : {}),
   };
 }
 
-/** A due line alone (Review): red when overdue, the accent color when today. */
+/** A due line alone (Review). */
 export function dueLine(due: string, tone: DueTone): SecondLine {
   return secondLine(due, '', tone);
 }

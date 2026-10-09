@@ -7,7 +7,12 @@ export type Resource<T> = {
   error: TickTickError | null;
 };
 
-export type LoadOptions = {silent?: boolean};
+export type LoadOptions = {
+  /** Keep showing what is there while loading again. */
+  silent?: boolean;
+  /** A retry after a network failure: it keeps counting attempts instead of starting over. */
+  retry?: boolean;
+};
 
 /** Network failures are retried after 2, 4, 8 and 15 seconds. */
 export const RETRY_DELAYS_MS = [2000, 4000, 8000, 15000];
@@ -22,8 +27,14 @@ export function loading<T>(current: Resource<T> | null | undefined, silent = fal
   return {status: silent && current?.data ? 'ready' : 'loading', data: current?.data ?? null, error: null};
 }
 
+/** Network failures that will be tried again: until the last try, the screen keeps loading. */
+export const retrying = new WeakSet<TickTickError>();
+
 /** A resource after its load: the data, or the error (a silent refresh keeps the old data). */
 export function settled<T>(current: Resource<T> | null | undefined, result: T | TickTickError, silent = false): Resource<T> {
+  if (result instanceof TickTickError && retrying.has(result)) {
+    return loading(current, silent);
+  }
   if (result instanceof TickTickError) {
     return {status: silent && current?.data ? 'ready' : 'error', data: current?.data ?? null, error: result};
   }

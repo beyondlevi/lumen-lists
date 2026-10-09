@@ -21,6 +21,15 @@ export function swipeActions(task: Task, {onView, onEdit, onDelete}: RowActions)
   ];
 }
 
-/** Rows carry `data-task-row`; anything else that takes the input inside a row is one of its actions. */
+/** Where the wearer is in a row: on the row itself, or on its first, middle or last action. */
+export type SwipeSpot = 'row' | 'first' | 'middle' | 'last';
+
+/** Rows carry `data-task-row`; anything else that takes the input inside a row is one of its actions, named by its label. */
 export const TASK_ROW_ATTRIBUTE = 'data-task-row';
-export const revealedBy = (event: FocusEvent<HTMLElement>) => !event.target.hasAttribute(TASK_ROW_ATTRIBUTE);
+export function spotOf(event: FocusEvent<HTMLElement>): SwipeSpot {
+  if (event.target.hasAttribute(TASK_ROW_ATTRIBUTE)) return 'row';
+  const label = event.target.getAttribute('aria-label');
+  if (label === t('actionView')) return 'first';
+  if (label === t('actionDelete')) return 'last';
+  return 'middle';
+}

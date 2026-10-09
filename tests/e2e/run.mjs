@@ -75,6 +75,25 @@ async function waitField(page, timeout = 8000) {
   await page.waitForTimeout(500);
 }
 
+/** Whether a row's actions are on screen: View is what shows at its own center. */
+async function actionsShown(page) {
+  return page.evaluate(() =>
+    [...document.querySelectorAll('[aria-label="View"]')].some(element => {
+      const box = element.getBoundingClientRect();
+      if (box.width === 0 || box.left < 0 || box.right > window.innerWidth) return false;
+      const top = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+      return top != null && (element === top || element.contains(top)) && Number(getComputedStyle(element).opacity) > 0.5;
+    }),
+  );
+}
+
+/** The band hints on screen are exactly these. */
+async function hints(page, expected) {
+  await page.waitForTimeout(200);
+  const shown = await page.locator('.hint-dock').first().evaluate(dock => [...dock.children].map(child => child.textContent.trim()));
+  assert.deepEqual(shown, expected);
+}
+
 /**
  * What Lumen's composer does when it closes: the text goes into the focused
  * field through the value setter and an `input` event, then `change`.
@@ -204,18 +223,34 @@ const scenarios = {
     await openWork(page);
     await focusUntil(page, 'ArrowDown', /^Call João about the contract/);
     await waitText(page, 'Swipe left: options');
+    // On the row, a swipe to the right does nothing; a swipe to the left reveals the actions.
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Call João about the contract/, 'right on the row stays on the row');
+    assert.equal(await actionsShown(page), false);
     await press(page, 'ArrowLeft');
     assert.match(await focusLabel(page), /^View$/, 'a swipe to the left reveals the actions');
-    await waitText(page, 'Swipe right: back');
+    assert.equal(await actionsShown(page), true);
+    await hints(page, ['Index tap: choose', 'Swipe right: next', 'Swipe left: back']);
     await shot('revealed');
+    // Inside the actions: right to the next one, left to the previous one.
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Edit$/);
+    await hints(page, ['Index tap: choose', 'Swipe right: next', 'Swipe left: previous']);
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Delete$/);
+    await hints(page, ['Index tap: choose', 'Swipe left: previous']);
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Delete$/, 'right on the last action does nothing');
     await press(page, 'ArrowLeft');
     assert.match(await focusLabel(page), /^Edit$/);
     await press(page, 'ArrowLeft');
-    assert.match(await focusLabel(page), /^Delete$/);
-    await press(page, 'ArrowRight', 2);
     assert.match(await focusLabel(page), /^View$/);
-    await press(page, 'ArrowRight');
-    assert.match(await focusLabel(page), /^Call João about the contract/, 'a swipe to the right hides them');
+    // Left on the first action closes them and gives the row back.
+    await press(page, 'ArrowLeft');
+    assert.match(await focusLabel(page), /^Call João about the contract/, 'left on View goes back to the row');
+    await page.waitForTimeout(400);
+    assert.equal(await actionsShown(page), false, 'the actions are hidden again');
+    await hints(page, ['Index tap: complete', 'Swipe left: options']);
     await waitText(page, 'Swipe left: options');
     await press(page, 'ArrowLeft');
     await press(page, 'Enter');
@@ -399,7 +434,8 @@ const scenarios = {
     const {page, context, errors, shot} = await openApp(browser, name, session);
     await openWork(page);
     await focusUntil(page, 'ArrowDown', /^Review the onboarding screens/);
-    await press(page, 'ArrowLeft', 2);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight');
     assert.match(await focusLabel(page), /^Edit$/);
     await press(page, 'Enter');
     await waitText(page, 'Edit task');
@@ -445,7 +481,8 @@ const scenarios = {
     // An empty Due clears the due date; text that is not a date is refused.
     await focusUntil(page, 'ArrowUp', /^Add tasks/);
     await focusUntil(page, 'ArrowDown', /^Prepare the quarterly report/);
-    await press(page, 'ArrowLeft', 2);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight');
     await press(page, 'Enter');
     await waitField(page);
     await press(page, 'ArrowDown');
@@ -469,7 +506,8 @@ const scenarios = {
     const {page, context, errors, shot} = await openApp(browser, name, session);
     await openWork(page);
     await focusUntil(page, 'ArrowDown', /^Renew the domain/);
-    await press(page, 'ArrowLeft', 3);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight', 2);
     assert.match(await focusLabel(page), /^Delete$/);
     await press(page, 'Enter');
     await waitText(page, 'will be deleted from Work');
@@ -480,7 +518,8 @@ const scenarios = {
     assert.deepEqual(await writeLines(), [], 'Back keeps the task');
     await page.waitForTimeout(500);
     await focusUntil(page, 'ArrowDown', /^Renew the domain/);
-    await press(page, 'ArrowLeft', 3);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight', 2);
     await press(page, 'Enter');
     await waitText(page, 'will be deleted from Work');
     await focusUntil(page, 'ArrowDown', /^Delete/, 4);
@@ -529,14 +568,40 @@ const scenarios = {
     await context.close();
   },
 
-  async 'errors: network retry, server error with Try again'(browser, name) {
+  async 'errors: loading while retrying, the error only after the last try'(browser, name) {
+    // The phone's internet comes up 6 s after the app opens: retries at 2 and 4 s fail, the one at 8 s works.
     await mock('/__mock/reset');
-    await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=0&forMs=1200`);
+    await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=0&forMs=6000`);
     const {page, context, errors, shot} = await openApp(browser, name, session);
-    await waitText(page, "Can't reach TickTick");
-    await shot('offline');
-    await waitText(page, 'Send the proposal', 7000);
+    await page.getByRole('status', {name: 'Loading'}).first().waitFor({state: 'visible', timeout: 4000});
+    await shot('retrying');
+    for (let waited = 0; waited < 9000; waited += 500) {
+      assert.equal(await page.getByText("Can't reach TickTick").count(), 0, 'no connection error while retrying');
+      if (await page.getByText('Send the proposal').count()) break;
+      await page.waitForTimeout(500);
+    }
+    await waitText(page, 'Send the proposal', 8000);
     await context.close();
+
+    // No internet at all: still loading through the retries (2 + 4 + 8 + 15 s), then the error with Try again.
+    await mock('/__mock/reset');
+    await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=0&forMs=120000`);
+    const offline = await openApp(browser, `${name}-offline`, session);
+    const opened = Date.now();
+    await offline.page.getByRole('status', {name: 'Loading'}).first().waitFor({state: 'visible', timeout: 4000});
+    while (Date.now() - opened < 26000) {
+      assert.equal(await offline.page.getByText("Can't reach TickTick").count(), 0, `no connection error at ${Date.now() - opened} ms`);
+      await offline.page.waitForTimeout(1000);
+    }
+    await waitText(offline.page, "Can't reach TickTick", 15000);
+    assert.ok(Date.now() - opened >= 28000, 'the error comes after the last retry');
+    await offline.page.waitForTimeout(400);
+    await offline.shot('offline');
+    await mock('/__mock/reset');
+    await focusUntil(offline.page, 'ArrowDown', /Try again/, 4);
+    await press(offline.page, 'Enter');
+    await waitText(offline.page, 'Send the proposal');
+    await offline.context.close();
 
     await mock('/__mock/reset');
     await mock(`/__mock/fail?path=${encodeURIComponent('^/open/v1/project$')}&status=500&times=1`);
@@ -548,7 +613,7 @@ const scenarios = {
     await focusUntil(failed.page, 'ArrowDown', /Try again/, 4);
     await press(failed.page, 'Enter');
     await waitText(failed.page, 'Send the proposal');
-    assert.deepEqual([...errors, ...failed.errors], []);
+    assert.deepEqual([...errors, ...offline.errors, ...failed.errors], []);
     await failed.context.close();
   },
 
@@ -558,6 +623,15 @@ const scenarios = {
     await waitText(page, 'Atrasadas');
     await waitText(page, 'Ontem · Trabalho');
     await waitText(page, 'Caixa de entrada');
+    await focusUntil(page, 'ArrowDown', /^Enviar a proposta/);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight');
+    assert.match(await focusLabel(page), /^Editar$/);
+    await hints(page, ['Indicador: escolher', 'À direita: próxima', 'À esquerda: anterior']);
+    const lines = await page.locator('.hint-dock').first().evaluate(dock => new Set([...dock.children].map(child => Math.round(child.getBoundingClientRect().top))).size);
+    assert.equal(lines, 1, 'the hints fit on one line');
+    await shot('swipe');
+    await press(page, 'ArrowLeft', 2);
     await focusUntil(page, 'ArrowUp', /^Adicionar tarefas/);
     await press(page, 'Enter');
     await waitField(page);
@@ -596,13 +670,17 @@ const scenarios = {
     await capture('03-TTList');
     await press(page, 'ArrowLeft');
     await capture('04-TTSwipe');
+    await press(page, 'ArrowRight');
+    await capture('04b-TTSwipeEdit');
+    await press(page, 'ArrowLeft');
     await press(page, 'Enter');
     await waitText(page, 'Subtasks · 1 of 3 done');
     await capture('05-TTTask');
     await press(page, 'Escape');
     await waitText(page, 'Add tasks');
     await page.waitForTimeout(500);
-    await press(page, 'ArrowLeft', 2);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight');
     await press(page, 'Enter');
     await waitText(page, 'Edit task');
     await capture('06-TTEdit');
@@ -615,7 +693,8 @@ const scenarios = {
     await press(page, 'Escape');
     await waitText(page, 'Add tasks');
     await page.waitForTimeout(500);
-    await press(page, 'ArrowLeft', 3);
+    await press(page, 'ArrowLeft');
+    await press(page, 'ArrowRight', 2);
     await press(page, 'Enter');
     await waitText(page, 'will be deleted');
     await capture('08-TTDelete');
