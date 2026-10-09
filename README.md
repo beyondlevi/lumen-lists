@@ -9,21 +9,22 @@ add tasks, dictated or written with the band.
 > Platforms, Inc. or Rokid. TickTick is a trademark of its owner, used here only to say what the app
 > works with. The app talks to TickTick through its public Open API with your own token.
 
-**Status:** 0.2.0. Tested against a mock of the TickTick Open API and in demo mode. Version 0.1.0
-(the shopping-list app this grew from) was tried on the glasses with a real TickTick account.
+**Status:** 0.2.1. Version 0.2.0 runs on the owner's glasses with a real TickTick account; 0.2.1
+fixes what came up there (the row options' navigation, the connection error at launch, the
+readability of due dates) and is tested against a mock of the TickTick Open API and in demo mode.
 
-The package id stays `cloud.bynd.lumen.lists` and the setting `ticktick.token`, so installing 0.2.0
-over 0.1.0 keeps the token already saved on the phone.
+The package id stays `cloud.bynd.lumen.lists` and the setting `ticktick.token`, so installing a new
+version over an older one keeps the token already saved on the phone.
 
 ## What it does
 
 | Screen | What you do there |
 | --- | --- |
-| **Pending** (start, first tab) | Every pending task of every list and of the Inbox, grouped into Overdue, Today, Tomorrow, each of the next days by name, Later and No date; sorted by due date, then priority. Each row: the checkbox in the priority's color (high red, medium yellow, low blue, none gray), the title, and the due date (red when overdue, blue when today) with the list. *Add tasks* first. |
+| **Pending** (start, first tab) | Every pending task of every list and of the Inbox, grouped into Overdue, Today, Tomorrow, each of the next days by name, Later and No date; sorted by due date, then priority. Each row: the checkbox in the priority's color (high red, medium yellow, low blue, none gray), the title, and the due date with the list, in bright text; an alert icon marks an overdue task and a clock one due today. *Add tasks* first. |
 | **Lists** (second tab) | The Inbox, then your lists: "7 pending", "7 pending · 1 overdue", "All done". |
 | **New** (third tab) | A text field for a list name, then Create. |
 | **A list** | *Add tasks*, the pending tasks with their due dates, and *Completed · N* last. |
-| **Options on a row** | Swipe **left** on a task: View, Edit and Delete appear (icons). Swipe left again to move between them, right to go back to the row. |
+| **Options on a row** | Swipe **left** on a task: View, Edit and Delete appear (icons), with View chosen. Swipe right for the next one (View → Edit → Delete), left for the previous one; left on View closes them and goes back to the row. The hints under the list follow where you are. |
 | **Task** (View) | Title, due date and time, priority, tags, notes and subtasks ("1 of 3 done", listed). Complete, Edit, Delete. |
 | **Edit** | Title and Due are real text fields (dictate or write: "tomorrow 3 pm", "amanhã 15h"; empty clears the due date). List and Priority (None, Low, Medium, High) open a choice. Save. |
 | **Add tasks** | A text field for one or more tasks: "Call João tomorrow at 3 pm and pay the rent on Friday". Continue. |
@@ -47,6 +48,11 @@ The **middle tap** is Back everywhere: up one screen, and out of the app from th
 - The first letter of the title is capitalized.
 
 ### Due dates
+
+On a row the due date is in the primary (brightest) text color: the glasses' green display turns
+colors into brightness, and red or blue text shows at about half the brightness of white. Overdue
+and today are told by an icon (an alert, a clock), not by the color.
+
 
 The app keeps TickTick's `dueDate`, `isAllDay` and `timeZone`. A timed task shows in the glasses'
 time zone; an all-day task is the calendar day it was set for, in its own time zone. New tasks and
@@ -128,8 +134,10 @@ the completed one.
 **Clearing a due date** in Edit sends `dueDate: null` and `startDate: null`; the documentation does
 not say how TickTick takes it.
 
-Network failures are retried after 2, 4, 8 and 15 seconds, and everything refreshes when the app
-comes back into view.
+Network failures are retried after 2, 4, 8 and 15 seconds: the phone's internet can take half a
+minute to come up after the app opens, so the screen keeps showing that it is loading through those
+tries, and only after the last one says it can't reach TickTick, with Try again (which starts the
+tries over). Everything refreshes when the app comes back into view.
 
 ## Development
 
@@ -176,11 +184,11 @@ npm run icons                # renders public/icon-*.png (a list with a check)
 
 ## Known limits
 
-- 0.2.0 has not been run on the glasses or against a real TickTick account yet.
+- 0.2.1 has not been run on the glasses or against a real TickTick account yet (0.2.0 has).
 - Recurring tasks are shown and completed as TickTick answers them; the app does not show the
   repeat rule. Tags, notes and subtasks are shown but not edited; reminders are not shown.
-- Swiping left reveals the actions because the app mirrors ArrowLeft and ArrowRight inside the
-  Toolkit's `SwipeToReveal`; moving between View, Edit and Delete is also mirrored.
+- Swiping left reveals the actions because the app swaps ArrowLeft and ArrowRight on a task's row
+  inside the Toolkit's `SwipeToReveal`; once the actions show, the keys go through unchanged.
 - Shared lists you can only read should refuse changes; the app then shows a message and rolls
   back. Not tested.
 
