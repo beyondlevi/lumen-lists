@@ -24,36 +24,60 @@ describe('strings', () => {
   });
 
   it('fills placeholders and plurals', () => {
-    expect(translatePlural('en', 'toBuy', 12)).toBe('12 to buy');
-    expect(translatePlural('en', 'reviewHeader', 1)).toBe('Add 1 item');
-    expect(translatePlural('en', 'reviewHeader', 3)).toBe('Add 3 items');
-    expect(translatePlural('pt', 'added', 2)).toBe('2 itens adicionados');
-    expect(translate('en', 'left', {left: 7, total: 12})).toBe('7 of 12 left');
-    expect(translate('pt', 'left', {left: 7, total: 12})).toBe('faltam 7 de 12');
+    expect(translatePlural('en', 'pendingCount', 7)).toBe('7 pending');
+    expect(translatePlural('pt', 'pendingCount', 1)).toBe('1 pendente');
+    expect(translatePlural('pt', 'overdueCount', 2)).toBe('2 atrasadas');
+    expect(translatePlural('en', 'reviewHeader', 1)).toBe('Add 1 task');
+    expect(translatePlural('en', 'reviewHeader', 2)).toBe('Add 2 tasks');
+    expect(translatePlural('pt', 'added', 2)).toBe('2 tarefas adicionadas');
+    expect(translate('en', 'completedMeta', {list: 'Work', count: 5})).toBe('Work · 5');
+  });
+
+  it('says nothing about shopping', () => {
+    for (const language of ['en', 'pt'] as const) {
+      for (const key of dictionaryKeys.en) {
+        expect(translate(language, key as Parameters<typeof translate>[1])).not.toMatch(/to buy|\bcart\b|carrinho|comprad|bought/i);
+      }
+    }
   });
 });
 
 describe('demo mode', () => {
-  it('has three lists with open items and a cart, in both languages', async () => {
+  it('has the Inbox and four lists, with pending and completed tasks, in both languages', async () => {
     for (const language of ['en', 'pt'] as const) {
-      const demo = createDemoClient(language, Date.now());
+      const demo = createDemoClient(language, Date.UTC(2026, 9, 9, 13), 'America/Sao_Paulo');
       const lists = await demo.lists();
-      expect(lists).toHaveLength(3);
-      expect(await demo.openItems(lists[0].id)).toHaveLength(7);
-      expect(await demo.cart(lists[0].id)).toHaveLength(5);
-      expect(await demo.openItems(lists[2].id)).toHaveLength(0);
+      const inbox = await demo.inbox();
+      expect(inbox.list.inbox).toBe(true);
+      expect(inbox.tasks).toHaveLength(3);
+      expect(lists.map(list => list.inbox)).toEqual([false, false, false, false]);
+      expect(await demo.pendingTasks(lists[0].id)).toHaveLength(7);
+      expect(await demo.completedTasks(lists[0].id, Date.UTC(2026, 9, 9, 13))).toHaveLength(5);
+      expect(await demo.pendingTasks(lists[3].id)).toHaveLength(0);
     }
+  });
+
+  it('dates the demo tasks from today: overdue, today at 15:00, tomorrow', async () => {
+    const now = Date.UTC(2026, 9, 9, 13);
+    const demo = createDemoClient('en', now, 'America/Sao_Paulo');
+    const [work] = await demo.lists();
+    const [proposal, call, review] = await demo.pendingTasks(work.id);
+    expect(proposal.due).toEqual({at: Date.UTC(2026, 9, 8, 3), allDay: true, timeZone: 'America/Sao_Paulo'});
+    expect(call.due).toEqual({at: Date.UTC(2026, 9, 9, 18), allDay: false, timeZone: 'America/Sao_Paulo'});
+    expect(call.subtasks.filter(subtask => subtask.done)).toHaveLength(1);
+    expect(review.due?.allDay).toBe(true);
   });
 
   it('changes only its own copy', async () => {
     const demo = createDemoClient('en');
-    const [groceries] = await demo.lists();
-    const [first] = await demo.openItems(groceries.id);
+    const [work] = await demo.lists();
+    const [first] = await demo.pendingTasks(work.id);
     await demo.complete(first);
-    expect(await demo.openItems(groceries.id)).toHaveLength(6);
-    expect((await demo.cart(groceries.id))[0].title).toBe(first.title);
-    await demo.reopen({...first, completedAt: Date.now()});
-    expect(await demo.openItems(groceries.id)).toHaveLength(7);
-    expect((await createDemoClient('en').openItems(groceries.id))).toHaveLength(7);
+    expect(await demo.pendingTasks(work.id)).toHaveLength(6);
+    await demo.reopen(first);
+    expect(await demo.pendingTasks(work.id)).toHaveLength(7);
+    await demo.update(first, {title: first.title, due: null, priority: 0, listId: 'demo-personal'});
+    expect(await demo.pendingTasks('demo-personal')).toHaveLength(2);
+    expect(await createDemoClient('en').pendingTasks(work.id)).toHaveLength(7);
   });
 });

@@ -137,3 +137,61 @@ body {
 .shimmer-line--short {
   inline-size: 40%;
 }
+
+/* Review: the tasks, the hint, then Add, Edit and Discard. */
+.review-page-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+/* Pending: the name of each group of days, between its tasks. */
+.group-title {
+  margin: 0;
+  padding: var(--uit-spacing-medium) var(--uit-spacing-large) 0;
+}
+
+/* The task screen's facts: an icon, then the text. */
+.task-facts > h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--uit-spacing-medium);
+  min-inline-size: 0;
+}
+
+.fact > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact-icon {
+  inline-size: var(--uit-icon-medium);
+  block-size: var(--uit-icon-medium);
+  color: var(--uit-color-icon-secondary);
+}
+
+.subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-small);
+}
+
+.subtasks > p {
+  margin: 0;
+}
+
+.subtask-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-xsmall);
+  margin: 0;
+  padding-inline-start: var(--uit-spacing-large);
+}

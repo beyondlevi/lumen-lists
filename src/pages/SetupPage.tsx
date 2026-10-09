@@ -4,13 +4,13 @@ import {Button, ButtonRail, MaterialLibrary, Page, ScrollView, TextColor, TextSt
 import {useMemo, useState} from 'react';
 import {LoadingContent} from '../components/StateContent';
 import {formatNumber, t} from '../i18n/strings';
-import {useLists, type Phase} from '../ListsProvider';
+import {useTasks, type Phase} from '../TasksProvider';
 
 const STEPS = ['setupStep1', 'setupStep2', 'setupStep3'] as const;
 
 /** Shown instead of every route while the TickTick token is missing or refused. */
 export function SetupPage({phase}: {phase: Exclude<Phase, {kind: 'ready'}>}) {
-  const {retrySetup} = useLists();
+  const {retrySetup} = useTasks();
   const [checked, setChecked] = useState(false);
   const retryMaterial = useMemo(() => MaterialLibrary.themedPrimaryBlue(), []);
 

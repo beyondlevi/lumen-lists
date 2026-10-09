@@ -1,9 +1,9 @@
 {
   "id": "cloud.bynd.lumen.lists",
-  "name": "Lists for Lumen",
-  "short_name": "Lists",
-  "version": "0.1.0",
-  "description": "Shopping lists kept in your TickTick lists: check items off as they go in the cart, add items dictated or written with the band.",
+  "name": "Unofficial TickTick for Lumen",
+  "short_name": "TickTick",
+  "version": "0.2.0",
+  "description": "Unofficial TickTick client for Rokid Lumen glasses: pending tasks across your lists and Inbox, complete, add, edit and delete tasks. Not made by or affiliated with TickTick/Appest.",
   "lang": "en",
   "start_url": "./",
   "scope": "./",

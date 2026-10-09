@@ -2,16 +2,16 @@
   "name": "lumen-lists",
   "private": true,
   "license": "MIT",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
-  "description": "Shopping lists for Rokid Lumen glasses, kept in your TickTick lists, built as a Meta Ray-Ban Display web app.",
+  "description": "Unofficial TickTick client for Rokid Lumen glasses, built as a Meta Ray-Ban Display web app.",
   "scripts": {
     "dev": "vite",
     "typecheck": "tsc --noEmit",
     "build": "tsc --noEmit && vite build",
     "package": "npm run build && node scripts/package-offline.mjs",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "TZ=America/Sao_Paulo vitest run",
     "test:e2e": "node tests/e2e/run.mjs",
     "mock": "node mock/server.mjs",
     "icons": "node scripts/generate-icons.mjs"
@@ -19,6 +19,7 @@
   "dependencies": {
     "@wearables-ui-toolkit/icons": "129.0.0",
     "@wearables-ui-toolkit/mrbd": "129.0.0",
+    "chrono-node": "2.10.2",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "react-router-dom": "7.17.0"

@@ -1,21 +1,23 @@
 import circlePlusFilled from '@wearables-ui-toolkit/icons/svg/circleplus__filled.svg';
+import clipboardFilled from '@wearables-ui-toolkit/icons/svg/clipboard__filled.svg';
 import rectangleCheckmarkStackFilled from '@wearables-ui-toolkit/icons/svg/rectanglecheckmarkstack__filled.svg';
 import {SubNavigationPager, type SubNavigationItem} from '@wearables-ui-toolkit/mrbd';
 import {useMemo} from 'react';
 import {t} from '../i18n/strings';
-import {useLists} from '../ListsProvider';
+import {useTasks} from '../TasksProvider';
 import {ListsTab} from './ListsTab';
 import {NewListTab} from './NewListTab';
+import {PendingTab} from './PendingTab';
 
-export const NEW_LIST_TAB = 1;
 
-/** The start screen: the TickTick lists, and New list beside them. */
+/** The start screen: Pending, the lists, and New list. */
 export function HomePage() {
-  const {tab, setTab, lists} = useLists();
+  const {tab, setTab, lists} = useTasks();
   const loading = lists == null || lists.status === 'loading';
   const items = useMemo<SubNavigationItem[]>(
     () => [
-      {label: t('tabLists'), icon: rectangleCheckmarkStackFilled, isLoading: loading},
+      {label: t('tabPending'), icon: rectangleCheckmarkStackFilled, isLoading: loading},
+      {label: t('tabLists'), icon: clipboardFilled, isLoading: loading},
       {label: t('tabNew'), icon: circlePlusFilled},
     ],
     [loading],
@@ -23,6 +25,7 @@ export function HomePage() {
 
   return (
     <SubNavigationPager items={items} currentPageIndex={tab} onPageChange={next => setTab(next)} ariaLabel={t('homeLabel')}>
+      <PendingTab />
       <ListsTab />
       <NewListTab />
     </SubNavigationPager>

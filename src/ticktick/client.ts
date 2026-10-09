@@ -1,7 +1,18 @@
 // TickTick Open API client (https://developer.ticktick.com/docs#/openapi),
 // called straight from the page with the personal API token as a Bearer token.
 // TickTick answers CORS with `*`, also on errors.
-import {TickTickError, type Item, type List, type ListsApi, type NewItem, type ReopenResult} from './types';
+import {
+  PRIORITIES,
+  TickTickError,
+  type Due,
+  type List,
+  type NewTask,
+  type Priority,
+  type ReopenResult,
+  type Subtask,
+  type Task,
+  type TasksApi,
+} from './types';
 
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
@@ -18,8 +29,12 @@ export type ClientOptions = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** The batch endpoint takes up to 50 tasks per request. */
 const BATCH_LIMIT = 50;
-/** Spacing between the sort orders of items added together. */
+/** Spacing between the sort orders of tasks added together. */
 export const SORT_STEP = 2 ** 30;
+/** How far back Completed looks. */
+export const COMPLETED_DAYS = 7;
+/** The Inbox's alias in the Open API; TickTick answers with its real id. */
+export const INBOX_ALIAS = 'inbox';
 
 type Json = Record<string, unknown>;
 
@@ -41,14 +56,44 @@ export function parseDate(value: unknown): number | null {
   return Number.isNaN(ms) ? null : ms;
 }
 
-export function toList(raw: unknown): List | null {
+export function deviceTimeZone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+export function toPriority(value: unknown): Priority {
+  const found = PRIORITIES.find(priority => priority === value);
+  return found ?? 0;
+}
+
+export function toList(raw: unknown, inbox = false): List | null {
   if (!isObject(raw) || typeof raw.id !== 'string') {
     return null;
   }
-  return {id: raw.id, name: text(raw.name).trim() || raw.id};
+  return {id: raw.id, name: text(raw.name).trim() || raw.id, inbox};
 }
 
-export function toItem(raw: unknown, listId?: string): Item | null {
+export function toDue(raw: Json): Due | null {
+  const at = parseDate(raw.dueDate) ?? parseDate(raw.startDate);
+  if (at == null) {
+    return null;
+  }
+  return {at, allDay: raw.isAllDay === true, timeZone: text(raw.timeZone) || deviceTimeZone()};
+}
+
+function toSubtasks(raw: unknown): Subtask[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter(isObject)
+    .map((item, index) => ({id: text(item.id) || String(index), title: text(item.title).trim(), done: number(item.status) !== 0}));
+}
+
+export function toTask(raw: unknown, listId?: string): Task | null {
   if (!isObject(raw) || typeof raw.id !== 'string') {
     return null;
   }
@@ -56,7 +101,11 @@ export function toItem(raw: unknown, listId?: string): Item | null {
     id: raw.id,
     listId: text(raw.projectId) || listId || '',
     title: text(raw.title).trim(),
-    note: (text(raw.content) || text(raw.desc)).trim(),
+    notes: (text(raw.content) || text(raw.desc)).trim(),
+    priority: toPriority(raw.priority),
+    due: toDue(raw),
+    tags: Array.isArray(raw.tags) ? raw.tags.filter((tag): tag is string => typeof tag === 'string') : [],
+    subtasks: toSubtasks(raw.items),
     sortOrder: number(raw.sortOrder),
     completedAt: parseDate(raw.completedTime),
   };
@@ -74,28 +123,45 @@ export function openTaskLists(raw: unknown): List[] {
     .filter((list): list is List => list != null);
 }
 
-/** Open tasks of `GET /project/{id}/data`, in the list's order. */
-export function openItemsFrom(raw: unknown, listId: string): Item[] {
+/** Pending tasks of `GET /project/{id}/data`, in the list's order. */
+export function pendingFrom(raw: unknown, listId: string): Task[] {
   const tasks = isObject(raw) && Array.isArray(raw.tasks) ? raw.tasks : null;
   if (tasks == null) {
     throw new TickTickError('server');
   }
   return tasks
     .filter(task => isObject(task) && number(task.status) === 0)
-    .map(task => toItem(task, listId))
-    .filter((item): item is Item => item != null)
+    .map(task => toTask(task, listId))
+    .filter((task): task is Task => task != null)
     .sort((a, b) => a.sortOrder - b.sortOrder);
 }
 
 /** Completed tasks of `POST /task/completed`, newest first. */
-export function cartFrom(raw: unknown, listId: string): Item[] {
+export function completedFrom(raw: unknown, listId: string): Task[] {
   if (!Array.isArray(raw)) {
     throw new TickTickError('server');
   }
   return raw
-    .map(task => toItem(task, listId))
-    .filter((item): item is Item => item != null && item.listId === listId)
+    .map(task => toTask(task, listId))
+    .filter((task): task is Task => task != null && task.listId === listId)
     .sort((a, b) => (b.completedAt ?? 0) - (a.completedAt ?? 0));
+}
+
+/**
+ * The real id of the Inbox from `GET /project/inbox/data`: the project in the
+ * answer, else the project of its tasks, else the alias itself.
+ */
+export function inboxIdFrom(raw: unknown): string {
+  if (isObject(raw)) {
+    if (isObject(raw.project) && typeof raw.project.id === 'string' && raw.project.id) {
+      return raw.project.id;
+    }
+    const first = Array.isArray(raw.tasks) ? raw.tasks.find(isObject) : undefined;
+    if (first && typeof first.projectId === 'string' && first.projectId) {
+      return first.projectId;
+    }
+  }
+  return INBOX_ALIAS;
 }
 
 export function errorFor(status: number): TickTickError {
@@ -137,38 +203,49 @@ export function createRequest({token, apiBase, fetch: fetcher = (input, init) =>
   };
 }
 
+/** The due fields of a task body. `null` clears them (an edit that empties Due). */
+export function dueBody(due: Due | null): Json {
+  if (due == null) {
+    return {startDate: null, dueDate: null, isAllDay: false};
+  }
+  const date = formatDate(due.at);
+  return {startDate: date, dueDate: date, isAllDay: due.allDay, timeZone: due.timeZone};
+}
+
 /** The body of a new task. */
-export function taskBody(listId: string, item: NewItem, sortOrder?: number): Json {
+export function taskBody(listId: string, task: NewTask, sortOrder?: number): Json {
   return {
     projectId: listId,
-    title: item.title,
-    ...(item.note ? {content: item.note} : {}),
+    title: task.title,
+    ...(task.due ? dueBody(task.due) : {}),
+    ...(task.priority ? {priority: task.priority} : {}),
     ...(sortOrder !== undefined ? {sortOrder} : {}),
   };
 }
 
 /**
- * Puts a completed item back in its list. The Open API documents no way to
- * reopen a task, so this tries the one the docs suggest, then falls back:
+ * Puts a completed task back in its list. The Open API documents no way to
+ * reopen a task, so this tries `status: 0` first, then falls back:
  *
  * 1. `POST /task/{id}` with `status: 0`. If TickTick answers with the task
- *    open again, done (`updated`).
+ *    open again, done (`updated`). Tested by the owner on TickTick: this is
+ *    what happens.
  * 2. Otherwise (still completed, no task in the answer, or the update refused)
- *    a new task with the same title and content is created in the list
- *    (`recreated`), and the completed original is deleted so it does not stay
- *    in the cart next to its copy. That delete is best effort.
+ *    a new task with the same title, notes, due and priority is created in the
+ *    list (`recreated`), and the completed original is deleted so it does not
+ *    stay among the completed next to its copy. That delete is best effort.
  *
  * Authentication, network and rate-limit failures are not a reason to fall
  * back: they are thrown as they are.
  */
-export async function reopenItem(request: Request, item: Item): Promise<ReopenResult> {
+export async function reopenTask(request: Request, task: Task): Promise<ReopenResult> {
   let answer: unknown = null;
   try {
-    answer = await request('POST', `/task/${encodeURIComponent(item.id)}`, {
-      id: item.id,
-      projectId: item.listId,
-      title: item.title,
-      content: item.note,
+    answer = await request('POST', `/task/${encodeURIComponent(task.id)}`, {
+      id: task.id,
+      projectId: task.listId,
+      title: task.title,
+      content: task.notes,
       status: 0,
     });
   } catch (error) {
@@ -177,54 +254,66 @@ export async function reopenItem(request: Request, item: Item): Promise<ReopenRe
     }
   }
   if (isObject(answer) && answer.status === 0) {
-    const reopened = toItem(answer, item.listId);
+    const reopened = toTask(answer, task.listId);
     if (reopened != null) {
-      return {path: 'updated', item: {...reopened, completedAt: null}};
+      return {path: 'updated', task: {...reopened, completedAt: null}};
     }
   }
 
-  const created = toItem(await request('POST', '/task', taskBody(item.listId, item, item.sortOrder)), item.listId);
+  const created = toTask(
+    await request('POST', '/task', {
+      ...taskBody(task.listId, {title: task.title, due: task.due, priority: task.priority}, task.sortOrder),
+      ...(task.notes ? {content: task.notes} : {}),
+    }),
+    task.listId,
+  );
   if (created == null) {
     throw new TickTickError('server');
   }
   try {
-    await request('DELETE', `/project/${encodeURIComponent(item.listId)}/task/${encodeURIComponent(item.id)}`);
+    await request('DELETE', `/project/${encodeURIComponent(task.listId)}/task/${encodeURIComponent(task.id)}`);
   } catch {
     // The copy is in the list; the original only stays in TickTick's completed view.
   }
-  return {path: 'recreated', item: {...created, completedAt: null}};
+  return {path: 'recreated', task: {...created, completedAt: null}};
 }
 
-export function createClient(options: ClientOptions): ListsApi {
+export function createClient(options: ClientOptions): TasksApi {
   const request = createRequest(options);
-  const task = (item: Item) => `/project/${encodeURIComponent(item.listId)}/task/${encodeURIComponent(item.id)}`;
+  const path = (task: Task) => `/project/${encodeURIComponent(task.listId)}/task/${encodeURIComponent(task.id)}`;
 
   return {
     async lists() {
       return openTaskLists(await request('GET', '/project'));
     },
 
-    async openItems(listId) {
-      return openItemsFrom(await request('GET', `/project/${encodeURIComponent(listId)}/data`), listId);
+    async inbox() {
+      const raw = await request('GET', `/project/${INBOX_ALIAS}/data`);
+      const id = inboxIdFrom(raw);
+      return {list: {id, name: 'Inbox', inbox: true}, tasks: pendingFrom(raw, id)};
     },
 
-    async cart(listId, now = Date.now()) {
+    async pendingTasks(listId) {
+      return pendingFrom(await request('GET', `/project/${encodeURIComponent(listId)}/data`), listId);
+    },
+
+    async completedTasks(listId, now = Date.now(), days = COMPLETED_DAYS) {
       const raw = await request('POST', '/task/completed', {
         projectIds: [listId],
-        startDate: formatDate(now - DAY_MS),
+        startDate: formatDate(now - days * DAY_MS),
         endDate: formatDate(now),
       });
-      return cartFrom(raw, listId);
+      return completedFrom(raw, listId);
     },
 
-    async addItems(listId, items, afterSortOrder) {
+    async addTasks(listId, tasks, afterSortOrder) {
       const sortOrder = (index: number) => (afterSortOrder === undefined ? undefined : afterSortOrder + SORT_STEP * (index + 1));
-      if (items.length === 1) {
-        await request('POST', '/task', taskBody(listId, items[0], sortOrder(0)));
+      if (tasks.length === 1) {
+        await request('POST', '/task', taskBody(listId, tasks[0], sortOrder(0)));
         return;
       }
-      for (let start = 0; start < items.length; start += BATCH_LIMIT) {
-        const add = items.slice(start, start + BATCH_LIMIT).map((item, index) => taskBody(listId, item, sortOrder(start + index)));
+      for (let start = 0; start < tasks.length; start += BATCH_LIMIT) {
+        const add = tasks.slice(start, start + BATCH_LIMIT).map((task, index) => taskBody(listId, task, sortOrder(start + index)));
         const answer = await request('POST', '/task/batch', {add});
         const errors = isObject(answer) && isObject(answer.id2error) ? Object.keys(answer.id2error) : [];
         if (errors.length > 0) {
@@ -233,26 +322,32 @@ export function createClient(options: ClientOptions): ListsApi {
       }
     },
 
-    async complete(item) {
-      await request('POST', `${task(item)}/complete`);
+    async complete(task) {
+      await request('POST', `${path(task)}/complete`);
     },
 
-    reopen(item) {
-      return reopenItem(request, item);
+    reopen(task) {
+      return reopenTask(request, task);
     },
 
-    async update(item, change) {
-      const answer = await request('POST', `/task/${encodeURIComponent(item.id)}`, {
-        id: item.id,
-        projectId: item.listId,
+    async update(task, change) {
+      let listId = task.listId;
+      if (change.listId !== task.listId) {
+        await request('POST', '/task/move', [{fromProjectId: task.listId, toProjectId: change.listId, taskId: task.id}]);
+        listId = change.listId;
+      }
+      const answer = await request('POST', `/task/${encodeURIComponent(task.id)}`, {
+        id: task.id,
+        projectId: listId,
         title: change.title,
-        content: change.note,
+        priority: change.priority,
+        ...dueBody(change.due),
       });
-      return toItem(answer, item.listId) ?? {...item, title: change.title, note: change.note};
+      return toTask(answer, listId) ?? {...task, listId, title: change.title, due: change.due, priority: change.priority};
     },
 
-    async remove(item) {
-      await request('DELETE', task(item));
+    async remove(task) {
+      await request('DELETE', path(task));
     },
 
     async createList(name) {

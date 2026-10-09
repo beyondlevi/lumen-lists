@@ -1,162 +1,98 @@
 import {describe, expect, it} from 'vitest';
-import {capitalize, editText, isQuantity, itemKey, parseEdit, parseItem, reviewItems, splitItems} from '../../src/items/parse';
-import type {Item} from '../../src/ticktick/types';
+import {dayKey, formatDue, type Clock} from '../../src/tasks/due';
+import {normalizeHours, parseDueText, parseTask, parseTasks, splitTasks} from '../../src/tasks/parse';
+import type {NewTask} from '../../src/ticktick/types';
 
-const item = (title: string, note = ''): Item => ({id: title, listId: 'l', title, note, sortOrder: 0, completedAt: null});
+// The tests run with TZ=America/Sao_Paulo (see package.json), as chrono reads local time.
+const SP = 'America/Sao_Paulo';
+// Friday, October 9, 2026, 10:00 in São Paulo.
+const clock: Clock = {now: Date.UTC(2026, 9, 9, 13), timeZone: SP};
+const templates = {dayTime: '{day} {time}', namedDate: '{name}, {date}', dateTime: '{date} · {time}'};
+const en = {today: 'Today', tomorrow: 'Tomorrow', yesterday: 'Yesterday', ...templates};
 
-describe('splitItems', () => {
-  it('splits on commas, new lines and the last "and"', () => {
-    expect(splitItems('Milk, two kilos of rice and coffee filters')).toEqual(['Milk', 'two kilos of rice', 'coffee filters']);
-    expect(splitItems('milk\neggs\nbread and butter')).toEqual(['milk', 'eggs', 'bread', 'butter']);
-    expect(splitItems('milk, eggs, and bread.')).toEqual(['milk', 'eggs', 'bread']);
-    expect(splitItems('apples; pears')).toEqual(['apples', 'pears']);
+const show = (task: NewTask | null) =>
+  task ? `${task.title}${task.due ? ` [${formatDue(task.due, clock, 'en', en)}${task.due.allDay ? ', all day' : ''}]` : ''}` : null;
+const showAll = (text: string, language: 'en' | 'pt' = 'en') => parseTasks(text, clock, language).map(show);
+
+describe('splitTasks', () => {
+  it('splits on new lines, semicolons and commas', () => {
+    expect(splitTasks('Buy milk, call Ana\nPay the rent; book flights.', clock, 'en')).toEqual(['Buy milk', 'call Ana', 'Pay the rent', 'book flights']);
+    expect(splitTasks(' - first\n• second\n\n', clock, 'en')).toEqual(['first', 'second']);
   });
 
-  it('splits Portuguese on the last "e"', () => {
-    expect(splitItems('leite, dois quilos de arroz e filtro de café')).toEqual(['leite', 'dois quilos de arroz', 'filtro de café']);
-    expect(splitItems('pão e manteiga')).toEqual(['pão', 'manteiga']);
+  it('splits on "and"/"e" only when both sides have their own due date', () => {
+    expect(splitTasks('Call João tomorrow at 3 pm and pay the rent on Friday', clock, 'en')).toEqual(['Call João tomorrow at 3 pm', 'pay the rent on Friday']);
+    expect(splitTasks('Buy milk and eggs tomorrow', clock, 'en')).toEqual(['Buy milk and eggs tomorrow']);
+    expect(splitTasks('Ligar pro João amanhã às 15h e pagar o aluguel na segunda', clock, 'pt')).toEqual(['Ligar pro João amanhã às 15h', 'pagar o aluguel na segunda']);
+    expect(splitTasks('Pão e manteiga', clock, 'pt')).toEqual(['Pão e manteiga']);
   });
 
-  it('only splits on the last "and" of a line', () => {
-    expect(splitItems('salt and pepper chips, milk and eggs')).toEqual(['salt and pepper chips', 'milk', 'eggs']);
-  });
-
-  it('keeps a decimal comma and a number with "e" together', () => {
-    expect(splitItems('1,5 kg de carne, arroz')).toEqual(['1,5 kg de carne', 'arroz']);
-    expect(splitItems('vinte e cinco ovos')).toEqual(['vinte e cinco ovos']);
-  });
-
-  it('drops empty pieces and list markers', () => {
-    expect(splitItems(' ,\n - milk \n\n• eggs ,')).toEqual(['milk', 'eggs']);
-    expect(splitItems('')).toEqual([]);
-  });
-});
-
-describe('parseItem in English', () => {
-  it('turns a leading quantity into the note', () => {
-    expect(parseItem('two kilos of rice')).toEqual({title: 'Rice', note: '2 kg'});
-    expect(parseItem('2kg rice')).toEqual({title: 'Rice', note: '2 kg'});
-    expect(parseItem('500 g of cheese')).toEqual({title: 'Cheese', note: '500 g'});
-    expect(parseItem('three boxes of oat milk')).toEqual({title: 'Oat milk', note: '3 boxes'});
-    expect(parseItem('one bottle of wine')).toEqual({title: 'Wine', note: '1 bottle'});
-    expect(parseItem('a kilo of apples')).toEqual({title: 'Apples', note: '1 kg'});
-    expect(parseItem('half a kilo of tomatoes')).toEqual({title: 'Tomatoes', note: '0.5 kg'});
-    expect(parseItem('1.5 liters of milk')).toEqual({title: 'Milk', note: '1.5 L'});
-  });
-
-  it('reads plain numbers and number words', () => {
-    expect(parseItem('12 eggs')).toEqual({title: 'Eggs', note: '12'});
-    expect(parseItem('six bananas')).toEqual({title: 'Bananas', note: '6'});
-    expect(parseItem('twenty-five paper plates')).toEqual({title: 'Paper plates', note: '25'});
-    expect(parseItem('twenty five paper plates')).toEqual({title: 'Paper plates', note: '25'});
-    expect(parseItem('a dozen eggs')).toEqual({title: 'Eggs', note: '12'});
-    expect(parseItem('half a dozen eggs')).toEqual({title: 'Eggs', note: '6'});
-    expect(parseItem('½ kg of butter')).toEqual({title: 'Butter', note: '0.5 kg'});
-  });
-
-  it('drops articles and keeps items without a quantity as they are', () => {
-    expect(parseItem('a watermelon')).toEqual({title: 'Watermelon', note: ''});
-    expect(parseItem('some coffee filters')).toEqual({title: 'Coffee filters', note: ''});
-    expect(parseItem('milk')).toEqual({title: 'Milk', note: ''});
-    expect(parseItem('7up')).toEqual({title: '7up', note: ''});
-  });
-
-  it('keeps the text when nothing but a quantity is there', () => {
-    expect(parseItem('12')).toEqual({title: '12', note: ''});
-    expect(parseItem('  ')).toBeNull();
+  it('keeps a decimal comma', () => {
+    expect(splitTasks('Pagar 1,5 mil hoje', clock, 'pt')).toEqual(['Pagar 1,5 mil hoje']);
   });
 });
 
-describe('parseItem in Portuguese', () => {
-  it('turns a leading quantity into the note', () => {
-    expect(parseItem('2 kg de arroz', 'pt')).toEqual({title: 'Arroz', note: '2 kg'});
-    expect(parseItem('dois quilos de arroz', 'pt')).toEqual({title: 'Arroz', note: '2 kg'});
-    expect(parseItem('duas caixas de leite', 'pt')).toEqual({title: 'Leite', note: '2 caixas'});
-    expect(parseItem('uma garrafa de azeite', 'pt')).toEqual({title: 'Azeite', note: '1 garrafa'});
-    expect(parseItem('meio quilo de queijo', 'pt')).toEqual({title: 'Queijo', note: '0,5 kg'});
-    expect(parseItem('1,5 kg de carne', 'pt')).toEqual({title: 'Carne', note: '1,5 kg'});
-    expect(parseItem('três latas de atum', 'pt')).toEqual({title: 'Atum', note: '3 latas'});
+describe('parseTask', () => {
+  it('takes the due date out of the title, in English', () => {
+    expect(show(parseTask('Call João tomorrow at 3 pm', clock, 'en'))).toBe('Call João [Tomorrow 15:00]');
+    expect(show(parseTask('pay the rent on Monday', clock, 'en'))).toBe('Pay the rent [Mon, Oct 12, all day]');
+    expect(show(parseTask('dentist on October 20 at 9:30am', clock, 'en'))).toBe('Dentist [Tue, Oct 20 09:30]');
+    expect(show(parseTask('send the report by next Wednesday', clock, 'en'))).toBe('Send the report [Wed, Oct 14, all day]');
+    expect(show(parseTask('water the plants today', clock, 'en'))).toBe('Water the plants [Today, all day]');
   });
 
-  it('reads number words, dozens and compounds', () => {
-    expect(parseItem('seis bananas', 'pt')).toEqual({title: 'Bananas', note: '6'});
-    expect(parseItem('uma dúzia de ovos', 'pt')).toEqual({title: 'Ovos', note: '12'});
-    expect(parseItem('meia dúzia de ovos', 'pt')).toEqual({title: 'Ovos', note: '6'});
-    expect(parseItem('vinte e cinco pratos', 'pt')).toEqual({title: 'Pratos', note: '25'});
-    expect(parseItem('vinte e um copos', 'pt')).toEqual({title: 'Copos', note: '21'});
+  it('takes the due date out of the title, in Portuguese', () => {
+    expect(show(parseTask('ligar pro João amanhã às 15h', clock, 'pt'))).toBe('Ligar pro João [Tomorrow 15:00]');
+    expect(show(parseTask('pagar o aluguel na segunda', clock, 'pt'))).toBe('Pagar o aluguel [Mon, Oct 12, all day]');
+    expect(show(parseTask('dentista dia 20 de outubro', clock, 'pt'))).toBe('Dentista [Tue, Oct 20, all day]');
+    expect(show(parseTask('reunião próxima terça às 10h30', clock, 'pt'))).toBe('Reunião [Tue, Oct 13 10:30]');
   });
 
-  it('drops articles', () => {
-    expect(parseItem('uma melancia', 'pt')).toEqual({title: 'Melancia', note: ''});
-    expect(parseItem('filtro de café', 'pt')).toEqual({title: 'Filtro de café', note: ''});
-    expect(parseItem('óleo', 'pt')).toEqual({title: 'Óleo', note: ''});
+  it('understands either language whatever the wearer’s is', () => {
+    expect(show(parseTask('call Ana tomorrow', clock, 'pt'))).toBe('Call Ana [Tomorrow, all day]');
+    expect(show(parseTask('ligar pra Ana amanhã', clock, 'en'))).toBe('Ligar pra Ana [Tomorrow, all day]');
+  });
+
+  it('keeps tasks without a date as they are, capitalized', () => {
+    expect(show(parseTask('book flights to Lisbon', clock, 'en'))).toBe('Book flights to Lisbon');
+    expect(show(parseTask('   ', clock, 'en'))).toBeNull();
+  });
+
+  it('keeps the text when nothing but a date is there', () => {
+    expect(show(parseTask('tomorrow', clock, 'en'))).toBe('Tomorrow');
+  });
+
+  it('puts all-day tasks at midnight of their day in the device zone', () => {
+    const task = parseTask('Pay the rent tomorrow', clock, 'en');
+    expect(task?.due).toEqual({at: Date.UTC(2026, 9, 10, 3), allDay: true, timeZone: SP});
+    expect(dayKey(task?.due?.at ?? 0, SP)).toBe('2026-10-10');
   });
 });
 
-describe('reviewItems', () => {
-  it('parses the whole text and marks what is already open', () => {
-    const open = [item('Milk', '2 boxes'), item('Tomatoes', '1 kg')];
-    expect(reviewItems('Milk, two kilos of rice and coffee filters', open)).toEqual([
-      {title: 'Milk', note: '', duplicate: true},
-      {title: 'Rice', note: '2 kg', duplicate: false},
-      {title: 'Coffee filters', note: '', duplicate: false},
-    ]);
-    expect(reviewItems('a tomato', open)[0].duplicate).toBe(true);
+describe('parseTasks', () => {
+  it('reads the design example', () => {
+    expect(showAll('Call João tomorrow at 3 pm and pay the rent on Monday')).toEqual(['Call João [Tomorrow 15:00]', 'Pay the rent [Mon, Oct 12, all day]']);
   });
 
-  it('keeps each item once', () => {
-    expect(reviewItems('milk, Milk and MILK', [])).toEqual([{title: 'Milk', note: '', duplicate: false}]);
-  });
-
-  it('works in Portuguese with accents', () => {
-    const open = [item('Pão')];
-    expect(reviewItems('pao, dois quilos de arroz e meia dúzia de ovos', open, 'pt')).toEqual([
-      {title: 'Pao', note: '', duplicate: true},
-      {title: 'Arroz', note: '2 kg', duplicate: false},
-      {title: 'Ovos', note: '6', duplicate: false},
+  it('reads several Portuguese tasks', () => {
+    expect(showAll('Ligar pro João amanhã às 15h e pagar o aluguel na segunda\ncomprar pão', 'pt')).toEqual([
+      'Ligar pro João [Tomorrow 15:00]',
+      'Pagar o aluguel [Mon, Oct 12, all day]',
+      'Comprar pão',
     ]);
   });
 });
 
-describe('edit text', () => {
-  it('starts from the quantity and the title', () => {
-    expect(editText(item('Milk', '2 boxes'))).toBe('2 boxes Milk');
-    expect(editText(item('Eggs', '12'))).toBe('12 Eggs');
-    expect(editText(item('Toilet paper', 'the big pack'))).toBe('Toilet paper');
-    expect(editText(item('Bread'))).toBe('Bread');
+describe('the Edit due field', () => {
+  it('reads a date, clears with empty text and refuses what is not a date', () => {
+    expect(parseDueText('tomorrow 3 pm', clock, 'en')).toEqual({at: Date.UTC(2026, 9, 10, 18), allDay: false, timeZone: SP});
+    expect(parseDueText('amanhã 15h', clock, 'pt')).toEqual({at: Date.UTC(2026, 9, 10, 18), allDay: false, timeZone: SP});
+    expect(parseDueText('Today 15:00', clock, 'en')).toEqual({at: Date.UTC(2026, 9, 9, 18), allDay: false, timeZone: SP});
+    expect(parseDueText('  ', clock, 'en')).toBeNull();
+    expect(parseDueText('banana', clock, 'en')).toBe('invalid');
   });
 
-  it('round-trips through parseEdit', () => {
-    expect(parseEdit('2 boxes Milk', item('Milk', '2 boxes'))).toEqual({title: 'Milk', note: '2 boxes'});
-    expect(parseEdit('three boxes of oat milk', item('Milk', '2 boxes'))).toEqual({title: 'Oat milk', note: '3 boxes'});
-    expect(parseEdit('Milk', item('Milk', '2 boxes'))).toEqual({title: 'Milk', note: ''});
-  });
-
-  it('keeps a note that is not a quantity unless a quantity is said', () => {
-    expect(parseEdit('Kitchen paper', item('Toilet paper', 'the big pack'))).toEqual({title: 'Kitchen paper', note: 'the big pack'});
-    expect(parseEdit('2 rolls of kitchen paper', item('Toilet paper', 'the big pack'))).toEqual({title: 'Kitchen paper', note: '2 rolls'});
-    expect(parseEdit('   ', item('Bread'))).toBeNull();
-  });
-
-  it('knows what a quantity is', () => {
-    expect(isQuantity('2 kg')).toBe(true);
-    expect(isQuantity('12')).toBe(true);
-    expect(isQuantity('2 caixas', 'pt')).toBe(true);
-    expect(isQuantity('organic')).toBe(false);
-    expect(isQuantity('')).toBe(false);
-  });
-});
-
-describe('helpers', () => {
-  it('capitalizes the first letter only', () => {
-    expect(capitalize('coffee filters')).toBe('Coffee filters');
-    expect(capitalize('iPhone case')).toBe('IPhone case');
-    expect(capitalize('')).toBe('');
-  });
-
-  it('compares titles without case, accents and plural', () => {
-    expect(itemKey('Tomatoes')).toBe(itemKey('tomato'));
-    expect(itemKey('Maçãs')).toBe(itemKey('maca'));
-    expect(itemKey('Coffee  filters!')).toBe(itemKey('coffee filter'));
+  it('turns Portuguese hours into what chrono reads', () => {
+    expect(normalizeHours('às 15h e às 9h30')).toBe('às 15:00 e às 9:30');
   });
 });

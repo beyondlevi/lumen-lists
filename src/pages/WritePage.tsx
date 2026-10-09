@@ -1,30 +1,27 @@
 import {ActionHint, Button, ButtonRail, InputTextView, MaterialLibrary, Page, ScrollView, TextColor, TextStyle, TextView} from '@wearables-ui-toolkit/mrbd';
-import {useEffect, useId, useMemo, useState} from 'react';
+import {useEffect, useId, useMemo} from 'react';
 import {useNavigate, useParams} from 'react-router-dom';
-import {StateContent} from '../components/StateContent';
-import {locale, t} from '../i18n/strings';
-import {editText, parseEdit} from '../items/parse';
-import {useLists} from '../ListsProvider';
-import {addDraftKey, editDraftKey, reviewPath} from '../paths';
+import {t} from '../i18n/strings';
+import {PENDING_CONTEXT, reviewPath} from '../paths';
 import {registerRestorer} from '../state/returnFocus';
+import {listName} from '../tasks/labels';
+import {useTasks} from '../TasksProvider';
 
 /**
- * Add items, or Edit one item: a real text field. Enter on it opens Lumen's
- * composer (dictation or writing with the band), which fills the field
- * through `input` and `change` events; Continue goes on from there.
+ * Add tasks: a real text field. Enter on it opens Lumen's composer (dictation
+ * or writing with the band), which fills the field through `input` and
+ * `change` events; Continue goes on to Review.
  */
-export function WritePage({mode}: {mode: 'add' | 'edit'}) {
-  const {listId = '', itemId = ''} = useParams();
+export function WritePage() {
+  const {listId = ''} = useParams();
   const navigate = useNavigate();
-  const {listName, openItems, draft, setDraft, updateItem} = useLists();
-  const [busy, setBusy] = useState(false);
-  const continueMaterial = useMemo(() => MaterialLibrary.themedPrimaryGreen(), []);
-  const item = mode === 'edit' ? openItems(listId)?.data?.find(entry => entry.id === itemId) : undefined;
-  const key = mode === 'add' ? addDraftKey(listId) : editDraftKey(itemId);
-  const text = draft(key) ?? (item ? editText(item, locale) : '');
-  const name = listName(listId) ?? '';
-
+  const {list, inboxId, writeDraft, setWriteDraft, reviewList} = useTasks();
+  const continueMaterial = useMemo(() => MaterialLibrary.themedPrimaryBlue(), []);
+  const context = listId || PENDING_CONTEXT;
+  const text = writeDraft(context) ?? '';
+  const target = reviewList(context) ?? (listId || inboxId || '');
   const fieldId = useId();
+
   useEffect(() => {
     const path = window.location.pathname;
     return registerRestorer(() => {
@@ -33,73 +30,42 @@ export function WritePage({mode}: {mode: 'add' | 'edit'}) {
     });
   }, [fieldId]);
 
-  // An Edit starts from the item's own text.
-  useEffect(() => {
-    if (mode === 'edit' && item && draft(key) === undefined) {
-      setDraft(key, editText(item, locale));
-    }
-  }, [draft, item, key, mode, setDraft]);
-
-  if (mode === 'edit' && !item) {
-    return (
-      <Page headerText={t('editHeader')} enableSystemBarInset={false}>
-        <StateContent title={t('itemGoneTitle')} body={t('itemGoneBody')} ariaLabel={t('itemGoneTitle')} />
-      </Page>
-    );
-  }
-
-  const go = async () => {
-    if (text.trim() === '' || busy) return;
-    if (mode === 'add') {
-      navigate(reviewPath(listId), {replace: true});
-      return;
-    }
-    const change = item ? parseEdit(text, item, locale) : null;
-    if (!item || !change) return;
-    setBusy(true);
-    const saved = await updateItem(item, change);
-    setBusy(false);
-    if (saved) {
-      setDraft(key, undefined);
-      navigate(-2);
-    }
+  const go = () => {
+    if (text.trim() === '') return;
+    navigate(reviewPath(context), {replace: true});
   };
 
   return (
-    <Page headerText={mode === 'add' ? t('writeHeader') : t('editHeader')} headerMetadata={name || undefined} enableSystemBarInset={false}>
+    <Page headerText={t('writeHeader')} headerMetadata={listName(list(target)) || undefined} enableSystemBarInset={false}>
       <div className="write-page-shell">
-        <ScrollView insetForHeader ariaLabel={mode === 'add' ? t('itemsFieldLabel') : t('editFieldLabel')}>
+        <ScrollView insetForHeader ariaLabel={t('tasksFieldLabel')}>
           <div className="content-inset">
             <InputTextView
               text={text}
-              hint={mode === 'add' ? t('itemsHint') : t('editHint')}
-              onTextChange={value => setDraft(key, value)}
-              showLoader={busy}
-              loadingLabel={t('loadingLabel')}
-              inputProps={{id: fieldId, 'aria-label': mode === 'add' ? t('itemsFieldLabel') : t('editFieldLabel'), maxLength: 2000}}
+              hint={t('tasksHint')}
+              onTextChange={value => setWriteDraft(context, value)}
+              inputProps={{id: fieldId, 'aria-label': t('tasksFieldLabel'), maxLength: 2000}}
             />
-            {mode === 'add' ? (
-              <TextView as="p" className="write-example" textStyle={TextStyle.LABEL} textColor={TextColor.SECONDARY}>
-                {t('writeExample')}
-              </TextView>
-            ) : null}
+            <TextView as="p" className="write-example" textStyle={TextStyle.LABEL} textColor={TextColor.SECONDARY}>
+              {t('writeExample')}
+            </TextView>
           </div>
         </ScrollView>
         <div className="action-dock">
           <ButtonRail>
             <Button
-              title={mode === 'add' ? t('continue') : t('save')}
+              title={t('continue')}
               alwaysShowText
               material={continueMaterial}
-              disabled={text.trim() === '' || busy}
+              disabled={text.trim() === ''}
               initialFocusEligible={false}
-              onClick={() => void go()}
+              onClick={go}
             />
           </ButtonRail>
         </div>
         <div className="hint-dock">
           <ActionHint text={t('hintCompose')} />
-          <ActionHint text={t('hintBack')} />
+          <ActionHint text={t('hintMiddleBack')} />
         </div>
       </div>
     </Page>

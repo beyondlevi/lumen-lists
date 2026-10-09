@@ -1,121 +1,96 @@
 import circlePlusFilled from '@wearables-ui-toolkit/icons/svg/circleplus__filled.svg';
 import squareFilled from '@wearables-ui-toolkit/icons/svg/square__filled.svg';
 import squareCheckFilled from '@wearables-ui-toolkit/icons/svg/squarecheck__filled.svg';
-import {ActionHint, IconTintColor, ListItem, Page, VerticalList} from '@wearables-ui-toolkit/mrbd';
-import {useEffect, useRef, type KeyboardEvent} from 'react';
-import {useNavigate, useParams} from 'react-router-dom';
-import {focusHandle, successorOf} from '../components/focus';
+import {IconTintColor, ListItem, Page, SwipeToReveal, VerticalList} from '@wearables-ui-toolkit/mrbd';
+import {useEffect, useState} from 'react';
+import {useParams} from 'react-router-dom';
+import {successorOf} from '../components/focus';
+import {RowHints} from '../components/RowHints';
 import {ErrorContent, LoadingContent} from '../components/StateContent';
-import {formatNumber, t} from '../i18n/strings';
-import {useLists} from '../ListsProvider';
-import {addPath, cartPath, itemPath, listPath} from '../paths';
-import {registerRestorer, rememberReturnRow, takeReturnRow} from '../state/returnFocus';
-import type {Item} from '../ticktick/types';
+import {mirrorArrows} from '../components/mirrorArrows';
+import {revealedBy, swipeActions, type RowActions} from '../components/taskRows';
+import {PRIORITY_TINT, secondLine} from '../components/taskStyle';
+import {useRows} from '../components/useRows';
+import {formatNumber, t, tp} from '../i18n/strings';
+import {dueText, listName, toneOf} from '../tasks/labels';
+import {addPath, completedPath, deletePath, editPath, listPath, taskPath} from '../paths';
+import type {Task} from '../ticktick/types';
+import {useTasks} from '../TasksProvider';
 
 const ADD_ROW = '__add';
-const CART_ROW = '__cart';
+const COMPLETED_ROW = '__completed';
 
-/** A list: Add items, the items still to buy, then In the cart. */
+/** A list: Add tasks, the pending tasks, then Completed. */
 export function ListPage() {
   const {listId = ''} = useParams();
-  const navigate = useNavigate();
-  const {listName, openItems, loadList, cart, loadCart, complete, rememberList} = useLists();
-  const rows = useRef(new Map<string, unknown>());
-  const items = openItems(listId);
-  const inCart = cart(listId);
-  const name = listName(listId) ?? '';
+  const {list, pendingTasks, loadList, completedTasks, loadCompleted, complete, rememberList, clock} = useTasks();
+  const {rowRef, go, moveTo} = useRows(`list:${listId}`, listPath(listId));
+  const [revealed, setRevealed] = useState(false);
+  const tasks = pendingTasks(listId);
+  const done = completedTasks(listId);
+  const name = listName(list(listId));
 
   useEffect(() => {
     rememberList(listId);
     loadList(listId, {silent: true});
-    loadCart(listId, {silent: true});
-  }, [listId, loadCart, loadList, rememberList]);
+    loadCompleted(listId, {silent: true});
+  }, [listId, loadCompleted, loadList, rememberList]);
 
-  useEffect(
-    () =>
-      registerRestorer(() => {
-        if (window.location.pathname !== listPath(listId)) return;
-        const row = takeReturnRow(listId);
-        if (row) {
-          requestAnimationFrame(() => requestAnimationFrame(() => focusHandle(rows.current.get(row))));
-        }
-      }),
-    [listId],
-  );
-
-  const go = (row: string, path: string) => {
-    rememberReturnRow(listId, row);
-    navigate(path);
-  };
-
-  const rowRef = (key: string) => (handle: unknown) => {
-    if (handle == null) rows.current.delete(key);
-    else rows.current.set(key, handle);
-  };
-
-  if (items?.data == null) {
+  if (tasks?.data == null) {
     return (
-      <Page headerText={name || t('appName')} headerIsLoading={items?.status !== 'error'} enableSystemBarInset={false}>
-        {items?.status === 'error' ? <ErrorContent error={items.error} onRetry={() => loadList(listId)} /> : <LoadingContent />}
+      <Page headerText={name || t('appName')} headerIsLoading={tasks?.status !== 'error'} enableSystemBarInset={false}>
+        {tasks?.status === 'error' ? <ErrorContent error={tasks.error} onRetry={() => loadList(listId)} /> : <LoadingContent />}
       </Page>
     );
   }
 
-  const open = items.data;
-  const cartCount = inCart?.data?.length ?? 0;
-  const total = open.length + cartCount;
-  const putInCart = (item: Item) => {
-    const next = successorOf(
-      open.map(entry => entry.id),
-      item.id,
-      ADD_ROW,
-    );
-    focusHandle(rows.current.get(next));
-    void complete(item);
+  const pending = tasks.data;
+  const actions: RowActions = {
+    onView: task => go(task.id, taskPath(listId, task.id)),
+    onEdit: task => go(task.id, editPath(listId, task.id)),
+    onDelete: task => go(task.id, deletePath(listId, task.id)),
   };
-  const openOptions = (event: KeyboardEvent, item: Item) => {
-    if (event.key === 'ArrowRight') {
-      event.preventDefault();
-      event.stopPropagation();
-      go(item.id, itemPath(listId, item.id));
-    }
+  const completeTask = (task: Task) => {
+    moveTo(successorOf(pending.map(entry => entry.id), task.id, ADD_ROW));
+    void complete(task);
   };
 
   return (
     <Page
       headerText={name}
-      headerMetadata={open.length === 0 ? t('nothingToBuy') : t('left', {left: formatNumber(open.length), total: formatNumber(total)})}
+      headerMetadata={pending.length > 0 ? tp('pendingCount', pending.length) : t('nothingPending')}
       enableSystemBarInset={false}>
       <div className="action-page-shell">
         <VerticalList insetForHeader ariaLabel={t('listLabel', {name})}>
-          <ListItem ref={rowRef(ADD_ROW)} title={t('addItems')} icon={circlePlusFilled} onClick={() => go(ADD_ROW, addPath(listId))} />
-          {open.map(item => (
-            <ListItem
-              key={item.id}
-              ref={rowRef(item.id)}
-              title={item.title}
-              subtitle={item.note || undefined}
-              icon={squareFilled}
-              iconTintColor={IconTintColor.SECONDARY}
-              onClick={() => putInCart(item)}
-              onKeyDown={(event: KeyboardEvent) => openOptions(event, item)}
-            />
+          <ListItem ref={rowRef(ADD_ROW)} title={t('addTasks')} icon={circlePlusFilled} onClick={() => go(ADD_ROW, addPath(listId))} />
+          {pending.map(task => (
+            <SwipeToReveal
+              key={task.id}
+              actions={swipeActions(task, actions)}
+              onKeyDownCapture={mirrorArrows}
+              onKeyUpCapture={mirrorArrows}
+              onFocus={event => setRevealed(revealedBy(event))}>
+              <ListItem
+                ref={rowRef(task.id)}
+                data-task-row=""
+                title={task.title}
+                {...secondLine(dueText(task, clock), '', toneOf(task, clock))}
+                icon={squareFilled}
+                iconTintColor={PRIORITY_TINT[task.priority]}
+                onClick={() => completeTask(task)}
+              />
+            </SwipeToReveal>
           ))}
           <ListItem
-            ref={rowRef(CART_ROW)}
-            title={t('inTheCart')}
-            subtitle={formatNumber(cartCount)}
+            ref={rowRef(COMPLETED_ROW)}
+            title={t('completedRow')}
+            subtitle={formatNumber(done?.data?.length ?? 0)}
             icon={squareCheckFilled}
-            iconTintColor={IconTintColor.POSITIVE}
-            onClick={() => go(CART_ROW, cartPath(listId))}
+            iconTintColor={IconTintColor.ACCENT}
+            onClick={() => go(COMPLETED_ROW, completedPath(listId))}
           />
         </VerticalList>
-        {open.length > 0 ? (
-          <div className="hint-dock">
-            <ActionHint text={t('hintCheck')} />
-            <ActionHint text={t('hintOptions')} />
-          </div>
-        ) : null}
+        {pending.length > 0 ? <RowHints revealed={revealed} /> : null}
       </div>
     </Page>
   );

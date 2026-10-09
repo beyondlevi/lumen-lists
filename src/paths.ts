@@ -1,13 +1,16 @@
 const id = (value: string) => encodeURIComponent(value);
 
-export const listPath = (listId: string) => `/list/${id(listId)}`;
-export const addPath = (listId: string) => `${listPath(listId)}/add`;
-export const reviewPath = (listId: string) => `${listPath(listId)}/review`;
-export const cartPath = (listId: string) => `${listPath(listId)}/cart`;
-export const itemPath = (listId: string, itemId: string) => `${listPath(listId)}/item/${id(itemId)}`;
-export const editPath = (listId: string, itemId: string) => `${itemPath(listId, itemId)}/edit`;
-export const deletePath = (listId: string, itemId: string) => `${itemPath(listId, itemId)}/delete`;
+/** Where Add tasks was opened: a list, or Pending (the tasks go to the Inbox by default). */
+export const PENDING_CONTEXT = 'pending';
 
-/** Draft keys: the text being written for a list, or for one item's Edit. */
-export const addDraftKey = (listId: string) => `add:${listId}`;
-export const editDraftKey = (itemId: string) => `edit:${itemId}`;
+export const listPath = (listId: string) => `/list/${id(listId)}`;
+export const completedPath = (listId: string) => `${listPath(listId)}/completed`;
+const contextPath = (context: string) => (context === PENDING_CONTEXT ? '' : listPath(context));
+export const addPath = (context: string) => `${contextPath(context)}/add`;
+export const reviewPath = (context: string) => `${contextPath(context)}/review`;
+export const reviewListPath = (context: string) => `${reviewPath(context)}/list`;
+export const taskPath = (listId: string, taskId: string) => `/task/${id(listId)}/${id(taskId)}`;
+export const editPath = (listId: string, taskId: string) => `${taskPath(listId, taskId)}/edit`;
+export const editListPath = (listId: string, taskId: string) => `${editPath(listId, taskId)}/list`;
+export const editPriorityPath = (listId: string, taskId: string) => `${editPath(listId, taskId)}/priority`;
+export const deletePath = (listId: string, taskId: string) => `${taskPath(listId, taskId)}/delete`;

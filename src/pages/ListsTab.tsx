@@ -1,19 +1,22 @@
-import shoppingCartFilled from '@wearables-ui-toolkit/icons/svg/shoppingcart__filled.svg';
+import clipboardFilled from '@wearables-ui-toolkit/icons/svg/clipboard__filled.svg';
+import inboxFilled from '@wearables-ui-toolkit/icons/svg/inbox__filled.svg';
 import {ListItem, VerticalList} from '@wearables-ui-toolkit/mrbd';
-import {useNavigate} from 'react-router-dom';
 import {ErrorContent, LoadingContent, StateContent} from '../components/StateContent';
-import {t, tp} from '../i18n/strings';
-import {useLists} from '../ListsProvider';
+import {LISTS_SCOPE, useRows} from '../components/useRows';
+import {t} from '../i18n/strings';
 import {listPath} from '../paths';
+import {countsLabel, listName} from '../tasks/labels';
+import {useTasks} from '../TasksProvider';
+import {NEW_LIST_TAB} from './tabs';
 
-/** One row per TickTick list; the list opened last takes the first focus. */
+/** The Inbox, then one row per TickTick list; the list opened last comes first to hand. */
 export function ListsTab() {
-  const navigate = useNavigate();
-  const {lists, loadLists, setTab, lastListId, rememberList} = useLists();
+  const {lists, loadAll, setTab, lastListId, rememberList} = useTasks();
+  const {rowRef, go} = useRows(LISTS_SCOPE, '/');
 
   if (lists?.data == null) {
     if (lists?.status === 'error') {
-      return <ErrorContent error={lists.error} onRetry={() => loadLists()} />;
+      return <ErrorContent error={lists.error} onRetry={() => loadAll()} />;
     }
     return <LoadingContent />;
   }
@@ -22,7 +25,7 @@ export function ListsTab() {
       <StateContent
         title={t('noListsTitle')}
         body={t('noListsBody')}
-        action={{label: t('newListAction'), onClick: () => setTab(1)}}
+        action={{label: t('newListAction'), onClick: () => setTab(NEW_LIST_TAB)}}
         ariaLabel={t('listsLabel')}
       />
     );
@@ -37,13 +40,14 @@ export function ListsTab() {
       {lists.data.map((list, index) => (
         <ListItem
           key={list.id}
-          title={list.name}
-          subtitle={list.open > 0 ? tp('toBuy', list.open) : t('allBought')}
-          icon={shoppingCartFilled}
+          ref={rowRef(list.id)}
+          title={listName(list)}
+          subtitle={countsLabel(list.pending, list.overdue)}
+          icon={list.inbox ? inboxFilled : clipboardFilled}
           initialFocusEligible={index >= lastIndex}
           onClick={() => {
             rememberList(list.id);
-            navigate(listPath(list.id));
+            go(list.id, listPath(list.id));
           }}
         />
       ))}

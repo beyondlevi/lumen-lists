@@ -6,13 +6,14 @@ import sharp from 'sharp';
 
 const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
-// A shopping cart: basket, handle and two wheels.
+// A list with a check: a checked box, then three lines.
 const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <g fill="none" stroke="#ffffff" stroke-width="36" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M48 88h56l52 236h236l44-176H128"/>
+    <path d="M72 128l40 40 72-80"/>
+    <path d="M248 128h192M248 256h192M248 384h192"/>
+    <rect x="76" y="220" width="72" height="72" rx="14"/>
+    <rect x="76" y="348" width="72" height="72" rx="14"/>
   </g>
-  <circle cx="184" cy="408" r="36" fill="#ffffff"/>
-  <circle cx="368" cy="408" r="36" fill="#ffffff"/>
 </svg>`;
 
 for (const size of [192, 512]) {
