@@ -1,0 +1,140 @@
+{
+  "en": [
+    {
+      "id": "demo-inbox",
+      "name": "Inbox",
+      "inbox": true,
+      "pending": [
+        {"title": "Reply to the landlord", "day": 0},
+        {"title": "Pick up the dry cleaning", "day": 2, "priority": 1},
+        {"title": "Ideas for the weekend"}
+      ],
+      "completed": [{"title": "Water the plants", "minutesAgo": 300}]
+    },
+    {
+      "id": "demo-work",
+      "name": "Work",
+      "pending": [
+        {"title": "Send the proposal", "day": -1, "priority": 5},
+        {
+          "title": "Call João about the contract",
+          "day": 0,
+          "time": "15:00",
+          "priority": 5,
+          "tags": ["client", "contract"],
+          "notes": "Confirm the start date and who signs on their side.",
+          "subtasks": [
+            {"title": "Read the draft", "done": true},
+            {"title": "List the open points"},
+            {"title": "Agree on the start date"}
+          ]
+        },
+        {"title": "Review the onboarding screens", "day": 1, "priority": 1},
+        {"title": "Prepare the quarterly report", "day": 3, "time": "10:00", "priority": 3},
+        {"title": "Renew the domain", "day": 5},
+        {"title": "Update the roadmap", "day": 12, "priority": 1},
+        {"title": "Book flights to Lisbon"}
+      ],
+      "completed": [
+        {"title": "Draft the agenda", "minutesAgo": 50},
+        {"title": "Book the meeting room", "minutesAgo": 82},
+        {"title": "Reply to Carla", "minutesAgo": 1500},
+        {"title": "Send the invoice", "minutesAgo": 2900},
+        {"title": "Fix the login bug", "minutesAgo": 4400}
+      ]
+    },
+    {
+      "id": "demo-groceries",
+      "name": "Groceries",
+      "pending": [
+        {"title": "Buy coffee filters", "day": 1},
+        {"title": "Milk"},
+        {"title": "Tomatoes"},
+        {"title": "Olive oil"},
+        {"title": "Bread"}
+      ],
+      "completed": [{"title": "Eggs", "minutesAgo": 1440}]
+    },
+    {
+      "id": "demo-personal",
+      "name": "Personal",
+      "pending": [{"title": "Pay the electricity bill", "day": 0, "priority": 3}],
+      "completed": []
+    },
+    {
+      "id": "demo-reading",
+      "name": "Reading",
+      "pending": [],
+      "completed": [{"title": "Finish the novel", "minutesAgo": 3000}]
+    }
+  ],
+  "pt": [
+    {
+      "id": "demo-inbox",
+      "name": "Caixa de entrada",
+      "inbox": true,
+      "pending": [
+        {"title": "Responder ao proprietário", "day": 0},
+        {"title": "Buscar a roupa na lavanderia", "day": 2, "priority": 1},
+        {"title": "Ideias para o fim de semana"}
+      ],
+      "completed": [{"title": "Regar as plantas", "minutesAgo": 300}]
+    },
+    {
+      "id": "demo-work",
+      "name": "Trabalho",
+      "pending": [
+        {"title": "Enviar a proposta", "day": -1, "priority": 5},
+        {
+          "title": "Ligar para o João sobre o contrato",
+          "day": 0,
+          "time": "15:00",
+          "priority": 5,
+          "tags": ["cliente", "contrato"],
+          "notes": "Confirmar a data de início e quem assina do lado deles.",
+          "subtasks": [
+            {"title": "Ler a minuta", "done": true},
+            {"title": "Listar os pontos em aberto"},
+            {"title": "Combinar a data de início"}
+          ]
+        },
+        {"title": "Revisar as telas de onboarding", "day": 1, "priority": 1},
+        {"title": "Preparar o relatório trimestral", "day": 3, "time": "10:00", "priority": 3},
+        {"title": "Renovar o domínio", "day": 5},
+        {"title": "Atualizar o roadmap", "day": 12, "priority": 1},
+        {"title": "Comprar passagens para Lisboa"}
+      ],
+      "completed": [
+        {"title": "Rascunhar a pauta", "minutesAgo": 50},
+        {"title": "Reservar a sala de reunião", "minutesAgo": 82},
+        {"title": "Responder à Carla", "minutesAgo": 1500},
+        {"title": "Enviar a nota fiscal", "minutesAgo": 2900},
+        {"title": "Corrigir o bug do login", "minutesAgo": 4400}
+      ]
+    },
+    {
+      "id": "demo-groceries",
+      "name": "Mercado",
+      "pending": [
+        {"title": "Comprar filtro de café", "day": 1},
+        {"title": "Leite"},
+        {"title": "Tomate"},
+        {"title": "Azeite"},
+        {"title": "Pão"}
+      ],
+      "completed": [{"title": "Ovos", "minutesAgo": 1440}]
+    },
+    {
+      "id": "demo-personal",
+      "name": "Pessoal",
+      "pending": [{"title": "Pagar a conta de luz", "day": 0, "priority": 3}],
+      "completed": []
+    },
+    {
+      "id": "demo-reading",
+      "name": "Leitura",
+      "pending": [],
+      "completed": [{"title": "Terminar o romance", "minutesAgo": 3000}]
+    }
+  ]
+}

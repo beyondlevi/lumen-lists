@@ -1,0 +1,197 @@
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: var(--uit-color-background-window);
+}
+
+body {
+  overflow: hidden;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* A route with a bottom dock: the single vertical owner, then the actions. */
+.action-page-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+/* Add items: the field, then Continue, then the band hints. */
+.write-page-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+.action-dock {
+  min-inline-size: 0;
+  padding-block-end: var(--uit-spacing-xsmall);
+}
+
+/* Band hints under the content: short cues, centered, never focusable. */
+.hint-dock {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--uit-spacing-small);
+  min-inline-size: 0;
+  padding: var(--uit-spacing-small) var(--uit-spacing-large) var(--uit-spacing-large);
+}
+
+.content-inset {
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--uit-spacing-large) + var(--uit-spacing-xsmall));
+  min-inline-size: 0;
+  padding: var(--uit-spacing-large);
+}
+
+.content-inset > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.write-example {
+  text-align: center;
+}
+
+.state-action {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.setup-problem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-small);
+}
+
+.setup-problem > p {
+  margin: 0;
+}
+
+.setup-steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-medium);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.setup-step {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--uit-spacing-medium);
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Loading placeholders shaped like list rows. */
+.shimmer-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-large);
+}
+
+.shimmer-row {
+  display: flex;
+  align-items: center;
+  gap: var(--uit-spacing-medium);
+  min-inline-size: 0;
+}
+
+.shimmer-icon {
+  flex: 0 0 auto;
+  inline-size: var(--uit-icon-2xl);
+  block-size: var(--uit-icon-2xl);
+}
+
+.shimmer-lines {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--uit-spacing-small);
+  min-inline-size: 0;
+}
+
+.shimmer-line {
+  inline-size: 100%;
+  block-size: var(--uit-spacing-large);
+}
+
+.shimmer-line--short {
+  inline-size: 40%;
+}
+
+/* Review: the tasks, the hint, then Add, Edit and Discard. */
+.review-page-shell {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto auto;
+  block-size: 100%;
+  min-block-size: 0;
+  min-inline-size: 0;
+}
+
+/* Pending: the name of each group of days, between its tasks. */
+.group-title {
+  margin: 0;
+  padding: var(--uit-spacing-medium) var(--uit-spacing-large) 0;
+}
+
+/* The task screen's facts: an icon, then the text. */
+.task-facts > h2 {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: var(--uit-spacing-medium);
+  min-inline-size: 0;
+}
+
+.fact > p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact-icon {
+  inline-size: var(--uit-icon-medium);
+  block-size: var(--uit-icon-medium);
+  color: var(--uit-color-icon-secondary);
+}
+
+.subtasks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-small);
+}
+
+.subtasks > p {
+  margin: 0;
+}
+
+.subtask-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--uit-spacing-xsmall);
+  margin: 0;
+  padding-inline-start: var(--uit-spacing-large);
+}

@@ -1,0 +1,22 @@
+{
+  "id": "cloud.bynd.lumen.lists",
+  "name": "Unofficial TickTick for Lumen",
+  "short_name": "TickTick",
+  "version": "0.2.1",
+  "description": "Unofficial TickTick client for Rokid Lumen glasses: pending tasks across your lists and Inbox, complete, add, edit and delete tasks. Not made by or affiliated with TickTick/Appest.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [
+    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any monochrome"},
+    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any monochrome"}
+  ],
+  "lumen_config": [
+    {"key": "ticktick.token", "label": "TickTick API token (Settings > Account > API Token)", "type": "secret"},
+    {"key": "demo", "label": "Demo mode (1 to turn on, for screenshots)", "type": "text", "optional": true}
+  ],
+  "lumen_internet": true
+}
